@@ -1,0 +1,82 @@
+Copyright and License
+=====================
+hciLab Driving Data Set: Copyright © 2012-2013 hciLab, Institute for
+Visualization and Interactive Systems (VIS), University of Stuttgart,
+Pfaffenwaldring 5a, 70569 Stuttgart, Germany
+
+This hciLab Driving Data Set is made available under the Open Database License (ODbL
+1.0): http://opendatacommons.org/licenses/odbl/1.0/. Any rights in individual
+contents of the database are licensed under the Database Contents License (DbCL
+1.0): http://opendatacommons.org/licenses/dbcl/1.0/ - See more at:
+http://opendatacommons.org/licenses/odbl/#sthash.TfyXJQAv.dpuf
+
+You are free to copy, distribute, use, modify, transform, build upon, and
+produce derived works from our data as long as you attribute any use of
+the data, or works produced from the data, in the manner specified in the above mentioned
+licenses. Read the full ODbL 1.0 and DbCL 1.0 license texts for the exact terms
+that apply. The licenses are courtesy of the Open Knowledge Foundation. This
+material is Open Data.
+
+If you would like to use the hciLab Driving Data Set but need a different 
+license for your specific use case, please contact us!
+
+Institute for Visualization and Interactive Systems
+University of Stuttgart
+Pfaffenwaldring 5a
+70569 Stuttgart
+Germany
+http://www.vis.uni-stuttgart.de/en/institute/departments/human-computer-interaction.html
+
+Stefan Schneegass, stefan.schneegass <at> vis.uni-stuttgart.de
+Bastian Pfleging, bastian.pfleging <at> vis.uni-stuttgart.de
+
+
+Data Attribution Guidelines
+===========================
+From our point of view, a reference to the initial publication 
+(see below) and a link back to our website are sufficient to meet the 
+attribution criterion.
+
+If you use our data set, we would also like to encourage you to send
+us a notification about your usage (maybe even a link to your project
+that we can use on our website). We are also interested in receiving
+a copy of the derived works, results, and corresponding publications.
+We are happy to answer any questions or address any remarks related 
+to out data set.
+
+The recommended form of attribution for the hciLab Driving Data Set is:
+
+    "This [title of report or article or dataset or service] contains data 
+    from the hciLab Driving Data Set ([Reference], http://www.hcilab.org/automotive)
+    made available under Open Database License (ODbL 1.0) and Database Contents 
+    License (DbCL 1.0)." 
+
+The corresponding reference to be cited as mentioned above in the contribution 
+text is:
+
+Plain text:
+Stefan Schneegass, Bastian Pfleging, Nora Broy, Albrecht Schmidt, and Frederik
+Heinrich. 2013. A data set of real world driving to assess driver workload. In
+Proceedings of the 5th International Conference on Automotive User Interfaces
+and Interactive Vehicular Applications (AutomotiveUI '13). ACM, New York, NY,
+USA, 150-157. DOI=10.1145/2516540.2516561
+http://doi.acm.org/10.1145/2516540.2516561
+
+BibTex version:
+@inproceedings{hciLabDrivingDataSet2013,
+ author = {Schneegass, Stefan and Pfleging, Bastian and Broy, Nora and Heinrich, Frederik and Schmidt, Albrecht},
+ title = {A data set of real world driving to assess driver workload},
+ booktitle = {Proceedings of the 5th International Conference on Automotive User Interfaces and Interactive Vehicular Applications},
+ series = {AutomotiveUI '13},
+ year = {2013},
+ isbn = {978-1-4503-2478-6},
+ location = {Eindhoven, Netherlands},
+ pages = {150--157},
+ numpages = {8},
+ url = {http://doi.acm.org/10.1145/2516540.2516561},
+ doi = {10.1145/2516540.2516561},
+ acmid = {2516561},
+ publisher = {ACM},
+ address = {New York, NY, USA},
+ keywords = {adaptive systems, automotive user interfaces, data set, physiological sensing, real world driving study, workload},
+} 

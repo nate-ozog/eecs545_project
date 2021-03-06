@@ -1,0 +1,6 @@
+The main data gathered by Zephyr Bioharness 3.0 chest belt are:
+- Time: Timestamp in hh:mm:ss.--- format 
+- HR: Heart Rate (Beats per minute)
+- BR: Breathing Rate (Breaths per minute)
+- Posture: Degrees from vertical (0° = subject vertical, 90°=subject prone (face down), -90°=subject supine (face up), ±180°= subject inverted)
+- Activity: Vector Magnitude Units, measured in g 

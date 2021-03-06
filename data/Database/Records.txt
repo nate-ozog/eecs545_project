@@ -1,0 +1,13 @@
+NM1: first drive of driver NM
+RY1: first drive of driver RY
+BK1
+MT1
+EK1
+RY2: second drive of driver RY
+KSG1
+NM2: second drive of driver NM
+AD1
+GM1: first drive of driver GM
+SJ1
+NM3: third drive of driver NM
+GM2: second drive of driver GM

@@ -44,13 +44,13 @@ def preprocessDriver(driver):
   bioData = bioData[:,1:]
   bioData = bioData[1:,:]
   dataDict["bioData"] = bioData
-  dataLabelsDict["bioData"] = ["HR", "BR", "Posture", "Activity"]
+  dataLabelsDict["bioData"] = ["bioHR", "bioBR", "bioPosture", "bioActivity"]
 
   # (N x D), D = 1, [subj_stress_metric]
   subData = np.genfromtxt(subPath, dtype=float, delimiter=';')
   subData = subData[1:]
   dataDict["subData"] = subData
-  dataLabelsDict["subData"] = ["Subjective Stress Metric"]
+  dataLabelsDict["subData"] = ["stressMetric"]
 
   # (N x D), D = 3, [xAccelerometer, yAccelerometer, zAccelerometer]
   leftACC = np.genfromtxt(erLeftPath + "ACC.csv", dtype=float, delimiter=',')
@@ -58,9 +58,9 @@ def preprocessDriver(driver):
   rightACC = np.genfromtxt(erRightPath + "ACC.csv", dtype=float, delimiter=',')
   rightACC = rightACC[2:,:]
   dataDict["leftACC"] = leftACC
-  dataLabelsDict["leftACC"] = ["xAccelerometer", "yAccelerometer", "zAccelerometer"]
+  dataLabelsDict["leftACC"] = ["lxAcc", "lyAcc", "lzAcc"]
   dataDict["rightACC"] = rightACC
-  dataLabelsDict["rightACC"] = ["xAccelerometer", "yAccelerometer", "zAccelerometer"]
+  dataLabelsDict["rightACC"] = ["rxAcc", "ryAcc", "rzAcc"]
 
   # (N x D), D = 1, [BVP(photoplethysmograph)]
   leftBVP = np.genfromtxt(erLeftPath + "BVP.csv", dtype=float, delimiter=',')
@@ -68,9 +68,9 @@ def preprocessDriver(driver):
   rightBVP = np.genfromtxt(erRightPath + "BVP.csv", dtype=float, delimiter=',')
   rightBVP = rightBVP[2:]
   dataDict["leftBVP"] = leftBVP
-  dataLabelsDict["leftBVP"] = ["BVP (photoplethysmograph)"]
+  dataLabelsDict["leftBVP"] = ["lBVP"]
   dataDict["rightBVP"] = rightBVP
-  dataLabelsDict["rightBVP"] = ["BVP (photoplethysmograph)"]
+  dataLabelsDict["rightBVP"] = ["rBVP"]
 
   # (N x D), D = 1, [EDA(electrodermal_activity)]
   leftEDA = np.genfromtxt(erLeftPath + "EDA.csv", dtype=float, delimiter=',')
@@ -78,9 +78,9 @@ def preprocessDriver(driver):
   rightEDA = np.genfromtxt(erRightPath + "EDA.csv", dtype=float, delimiter=',')
   rightEDA = rightEDA[2:]
   dataDict["leftEDA"] = leftEDA
-  dataLabelsDict["leftEDA"] = ["EDA (Electrodermal Activity)"]
+  dataLabelsDict["leftEDA"] = ["lEDA"]
   dataDict["rightEDA"] = rightEDA
-  dataLabelsDict["rightEDA"] = ["EDA (Electrodermal Activity)"]
+  dataLabelsDict["rightEDA"] = ["rEDA"]
 
   # (N x D), D = 1, [HR]
   leftHR = np.genfromtxt(erLeftPath + "HR.csv", dtype=float, delimiter=',')
@@ -88,9 +88,9 @@ def preprocessDriver(driver):
   rightHR = np.genfromtxt(erRightPath + "HR.csv", dtype=float, delimiter=',')
   rightHR = rightHR[2:]
   dataDict["leftHR"] = leftHR
-  dataLabelsDict["leftHR"] = ["HR"]
+  dataLabelsDict["leftHR"] = ["lHR"]
   dataDict["rightHR"] = rightHR
-  dataLabelsDict["rightHR"] = ["HR"]
+  dataLabelsDict["rightHR"] = ["rHR"]
 
   # # (N x D), D = 2, [init_time, end_time] (time between heart beats)
   # # This data is not very useful so we will probably ignore it
@@ -105,9 +105,9 @@ def preprocessDriver(driver):
   rightTEMP = np.genfromtxt(erRightPath + "TEMP.csv", dtype=float, delimiter=',')
   rightTEMP = rightTEMP[2:]
   dataDict["leftTEMP"] = leftTEMP
-  dataLabelsDict["leftTEMP"] = ["Temp (Celcius)"]
+  dataLabelsDict["leftTEMP"] = ["lTemp"]
   dataDict["rightTEMP"] = rightTEMP
-  dataLabelsDict["rightTEMP"] = ["Temp (Celcius)"]
+  dataLabelsDict["rightTEMP"] = ["rTemp"]
 
   # Return the data and labels.
   return dataDict, dataLabelsDict

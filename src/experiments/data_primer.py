@@ -30,26 +30,15 @@ def standardizeDriver(data, labels):
             if data[k].ndim == 1:
                 data[k] = data[k].reshape(len(data[k]), 1)
             kD = data[k].shape[1]
-            # Stretch interpolate the array to fit subData
-            if ((kN / N) < 1):
-                for d in range(kD):
-                    featureData = data[k].T[d]
-                    featureDataInterp = interp.interp1d(np.arange(featureData.size), featureData)
-                    featureDataStretch = featureDataInterp(np.linspace(0, featureData.size - 1, Y.size))
-                    featureData = featureDataStretch
-                    featureDataLabel = labels[k][d]
-                    XCols.append(featureData)
-                    XColLables.append(featureDataLabel)
-            # Compress interpolate the array to fit subData
-            else:
-                for d in range(kD):
-                    featureData = data[k].T[d]
-                    featureDataInterp = interp.interp1d(np.arange(featureData.size), featureData)
-                    featureDataStretch = featureDataInterp(np.linspace(0, featureData.size - 1, Y.size))
-                    featureData = featureDataStretch
-                    featureDataLabel = labels[k][d]
-                    XCols.append(featureData)
-                    XColLables.append(featureDataLabel)
+            # Interpolate the array to fit subData
+            for d in range(kD):
+                featureData = data[k].T[d]
+                featureDataInterp = interp.interp1d(np.arange(featureData.size), featureData)
+                featureDataStretch = featureDataInterp(np.linspace(0, featureData.size - 1, Y.size))
+                featureData = featureDataStretch
+                featureDataLabel = labels[k][d]
+                XCols.append(featureData)
+                XColLables.append(featureDataLabel)
     # Go through our resized data and package into 2D array
     X = np.zeros((N, len(XCols)))
     for i in range(X.shape[1]):
@@ -97,6 +86,7 @@ def standardizeDataDims():
 def main():
     # Read documentation of "standardizeDataDims()" if confused about return values
     X, XDrivers, XLabels, Y, YDrivers = standardizeDataDims()
+    print(XLabels)
 
 
 

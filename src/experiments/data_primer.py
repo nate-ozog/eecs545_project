@@ -25,7 +25,6 @@ def standardizeDriver(data, labels):
     for k in keys:
         # If the key is not our subject label data then continue
         if (k != "subData"):
-            kN = data[k].shape[0]
             # If vector, make N x 1 (needs to be 2D to make later stuff work)
             if data[k].ndim == 1:
                 data[k] = data[k].reshape(len(data[k]), 1)
@@ -86,7 +85,6 @@ def standardizeDataDims():
 def main():
     # Read documentation of "standardizeDataDims()" if confused about return values
     X, XDrivers, XLabels, Y, YDrivers = standardizeDataDims()
-    print(XLabels)
 
 
 

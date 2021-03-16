@@ -84,7 +84,7 @@ def run(device, X, Y, NumClasses):
   Y = Y[p]
 
   # Hyperparameters
-  learningRate = 1e-2
+  learningRate = 0.01
   momentum = 0.9
   epochs = 128
   batchSize = 64
@@ -94,7 +94,10 @@ def run(device, X, Y, NumClasses):
   numSamples = 0
 
   # K-Fold iterations
-  kf = KFold(n_splits=10)
+  nfold = 10
+  avgLossMat = np.zeros((nfold, epochs))
+  kItr = 0
+  kf = KFold(n_splits=nfold)
   for trainIdx, testIdx in kf.split(X):
     # Get data for K-iteration
     XTrain = X[trainIdx]
@@ -117,6 +120,9 @@ def run(device, X, Y, NumClasses):
       p = np.random.permutation(XTrain.shape[0])
       XTrain = XTrain[p]
       YTrain = YTrain[p]
+      numLoss = 0
+      lossSum = 0
+      # Run batches for epoch
       for j in range(0, XTrain.shape[0], batchSize):
         XMiniBatch = torch.autograd.Variable(XTrain[j:j + batchSize])
         YMiniBatch = torch.autograd.Variable(YTrain[j:j + batchSize])
@@ -125,7 +131,13 @@ def run(device, X, Y, NumClasses):
         loss = lossFunction(netOut, YMiniBatch)
         loss.backward()
         optimizer.step()
-      print(loss.item())
+        lossSum += loss.item()
+        numLoss += 1
+      # Store to our average loss matrix
+      avgLossMat[kItr][i] = lossSum / numLoss
+      # Print average loss every few iterations
+      if i % 16 == 0:
+        print("Average loss:", avgLossMat[kItr][i])
 
     # Run testing
     XTest = torch.from_numpy(XTest).float().to(device)
@@ -136,7 +148,15 @@ def run(device, X, Y, NumClasses):
     _, netPreds = netOut.max(1)
     numCorrect += (netPreds == YTestBatch).sum()
     numSamples += netPreds.size(0)
-    print("Current Acc:", numCorrect.item() / numSamples)
+
+    # Print current accuracy as of this k-iter, update k-iter
+    print("Current accuracy:", numCorrect.item() / numSamples)
+    kItr += 1
+
+  # After all k-fold validation do data analysis
+  print("Final accuracy:", numCorrect.item() / numSamples)
+
+  # TODO: Plot the average loss across all k-fold
 
   return
 
@@ -149,7 +169,7 @@ def main():
   else:
     device = torch.device('cpu')
   _, XDrivers, _, _, YDrivers = standardizeDataDims()
-  NumClasses = 3
+  NumClasses = 3 # 10
   X, Y = prepareData(XDrivers, YDrivers, NumClasses)
   run(device, X, Y, NumClasses)
   return

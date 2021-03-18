@@ -101,21 +101,39 @@ print(confusion_matrix(y_test,pred))
 print(classification_report(y_test,pred))
 
 ## K = 1-40
+
 error_rate = []
-for i in range(1,20):
-    print(i)
+score_list = []
+cv_list = []
+
+fold = 5
+for i in range(1,40):
+    
+
     knn = KNeighborsClassifier(n_neighbors=i)
     knn.fit(X_train,y_train)
     pred_i = knn.predict(X_test)
-    error_rate.append(np.mean(pred_i != y_test))
+    error = np.mean(pred_i != y_test)
+    error_rate.append(error)
+    score = knn.score(X_test, y_test)
+    score_list.append(score)
+    cv_scores = np.mean(cross_val_score(knn, X, Y, cv = fold)) 
+    cv_list.append(cv_scores)
+    print("K nearest neigbor = " + str(i))
+    print("Naive score = " + str(score)) 
+    print(str(fold)+" fold Cross validation score = " + str(cv_scores)) 
 
-## Plot the result for different K 
 plt.figure(figsize=(10,6))
-plt.plot(range(1,20),error_rate,color='blue', linestyle='dashed', marker='o',markerfacecolor='red', markersize=10)
+#plt.plot(range(1,20),error_rate,color='blue', linestyle='dashed', marker='o',markerfacecolor='red', markersize=10)
+plot1 = plt.figure(1)
+plt.plot(range(1,20),score_list,color='blue', linestyle='dashed', marker='o',markerfacecolor='red', markersize=10)
+plot2 = plt.figure(2)
+plt.plot(range(1,20),cv_list,color='blue', linestyle='dashed', marker='o',markerfacecolor='red', markersize=10)
 plt.title('Error Rate vs. K Value')
 plt.xlabel('K')
 plt.ylabel('Error Rate')
 
+    
 ## Check K = 1 again
 #knn = KNeighborsClassifier(n_neighbors=1)
 #knn.fit(X_train,y_train)

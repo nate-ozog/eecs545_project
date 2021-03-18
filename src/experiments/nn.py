@@ -1,7 +1,19 @@
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
 from sklearn.model_selection import KFold
 from data_primer import standardizeDataDims
+
+
+
+# Hyperparameters
+learningRate = 0.01
+momentum = 0.9
+epochs = 128
+batchSize = 64
+nfold = 10
+numClasses = 10
+numFeatures = 18
 
 
 
@@ -27,7 +39,7 @@ class Network(torch.nn.Module):
 
 
 
-def prepareData(XDrivers, YDrivers, NumClasses):
+def prepareData(XDrivers, YDrivers):
   """
   Normalizes data on a per-driver basis. Normalizes
   every feature column between 0 and 1. Organizes
@@ -35,7 +47,7 @@ def prepareData(XDrivers, YDrivers, NumClasses):
   i.e. 2 classes means the boundary of stressed vs
   not stressed is 0.5. Ideally, we want a range, for
   example a classification of 1-10 means
-  NumClasses = 10.
+  numClasses = 10.
   """
   # Constants
   N = 0
@@ -49,13 +61,13 @@ def prepareData(XDrivers, YDrivers, NumClasses):
     N += Xi.shape[0]
     D = Xi.shape[1]
 
-  # Create NumClasses one-hot vectors for classification
-  yRange = np.arange(NumClasses + 1)
+  # Create numClasses one-hot vectors for classification
+  yRange = np.arange(numClasses + 1)
   yRange = (yRange - yRange.min(axis=0)) / (yRange.max(axis=0) - yRange.min(axis=0))
   for i in range(numDrivers):
     Yi = YDrivers[i]
     YiC = np.zeros(Yi.shape)
-    for j in range(1, NumClasses):
+    for j in range(1, numClasses):
       lBound = yRange[j]
       uBound = yRange[j + 1]
       YiC += np.where((lBound < Yi) & (Yi <= uBound), j, 0)
@@ -77,17 +89,11 @@ def prepareData(XDrivers, YDrivers, NumClasses):
 
 
 
-def run(device, X, Y, NumClasses):
+def run(device, X, Y):
   # Shuffle X and Y data to diversify gradient descent between drivers
   p = np.random.permutation(X.shape[0])
   X = X[p]
   Y = Y[p]
-
-  # Hyperparameters
-  learningRate = 0.01
-  momentum = 0.9
-  epochs = 128
-  batchSize = 64
 
   # K-Fold validation variables
   numCorrect = 0
@@ -106,7 +112,7 @@ def run(device, X, Y, NumClasses):
     YTest = Y[testIdx]
 
     # Create new neural network and send to device
-    net = Network(X.shape[1], 128, 256, 128, NumClasses)
+    net = Network(X.shape[1], 128, 256, 128, numClasses)
     net = net.to(device)
     optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum)
     lossFunction = torch.nn.CrossEntropyLoss()
@@ -154,10 +160,121 @@ def run(device, X, Y, NumClasses):
     kItr += 1
 
   # After all k-fold validation do data analysis
-  print("Final accuracy:", numCorrect.item() / numSamples)
+  valAcc = numCorrect.item() / numSamples
+  avgLoss = avgLossMat.mean(axis=0)
+  print("Final accuracy:", valAcc)
 
-  # TODO: Plot the average loss across all k-fold
+  # Save loss figure and validation accuracy if better than prior solution
+  bestValAcc = np.load("../../data/nnBestValAcc.npy")
+  if (valAcc > bestValAcc):
+    print("Better than prior solution, saving")
+    plt.plot(avgLoss)
+    plt.xlabel('Epoch #')
+    plt.ylabel('Average Loss')
+    plt.title('Average Loss over Epochs')
+    plt.tight_layout()
+    plt.savefig('../../data/nnAvgLoss.png')
+    plt.close()
+    np.save("../../data/nnBestValAcc.npy", valAcc)
+  else:
+    print("Not better than prior solution")
 
+  # Return
+  return
+
+
+
+def featureImportance(device, X, XLabels, Y):
+  # Shuffle X and Y data to diversify gradient descent between drivers
+  p = np.random.permutation(X.shape[0])
+  X = X[p]
+  Y = Y[p]
+
+  # K-Fold iterations
+  kf = KFold(n_splits=nfold)
+  for trainIdx, testIdx in kf.split(X):
+    # Get data for K-iteration
+    XTrain = X[trainIdx]
+    YTrain = Y[trainIdx]
+    XTest = X[testIdx]
+    YTest = Y[testIdx]
+
+    # Create new neural network and send to device
+    net = Network(X.shape[1], 128, 256, 128, numClasses)
+    net = net.to(device)
+    optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum)
+    lossFunction = torch.nn.CrossEntropyLoss()
+
+    # Send testing data to device
+    XTrain = torch.from_numpy(XTrain).float().to(device)
+    YTrain = torch.from_numpy(YTrain).long().to(device)
+
+    # Run training, suffle data after every epoch
+    for i in range(epochs):
+      p = np.random.permutation(XTrain.shape[0])
+      XTrain = XTrain[p]
+      YTrain = YTrain[p]
+      # Run batches for epoch
+      for j in range(0, XTrain.shape[0], batchSize):
+        XMiniBatch = torch.autograd.Variable(XTrain[j:j + batchSize])
+        YMiniBatch = torch.autograd.Variable(YTrain[j:j + batchSize])
+        optimizer.zero_grad()
+        netOut = net(XMiniBatch)
+        loss = lossFunction(netOut, YMiniBatch)
+        loss.backward()
+        optimizer.step()
+      if i % 16 == 0:
+        print("In featureImportance() still training...")
+
+    # Run testing with no randomization.
+    XTestNormal = torch.from_numpy(XTest).float().to(device)
+    YTestNormal = torch.from_numpy(YTest).long().to(device)
+    XTestBatchNormal = torch.autograd.Variable(XTestNormal)
+    YTestBatchNormal = torch.autograd.Variable(YTestNormal)
+    netOut = net(XTestBatchNormal)
+    _, netPreds = netOut.max(1)
+    numCorrectNormal = (netPreds == YTestBatchNormal).sum()
+    numSamplesNormal = netPreds.size(0)
+    valAccNormal = numCorrectNormal.item() / numSamplesNormal
+
+    # Iterate through all features and get accuracy with values randomized
+    valAccFeatures = np.zeros((numFeatures,))
+    for i in range(numFeatures):
+      N = XTest.shape[0]
+      XTestI = XTest
+      # Randomize the i-th column of XTestI
+      XTestI[:,i] = np.squeeze(np.random.rand(N, 1))
+      XTestI = torch.from_numpy(XTestI).float().to(device)
+      YTestI = torch.from_numpy(YTest).long().to(device)
+      XTestBatchI = torch.autograd.Variable(XTestI)
+      YTestBatchI = torch.autograd.Variable(YTestI)
+      netOut = net(XTestBatchI)
+      _, netPreds = netOut.max(1)
+      numCorrectI = (netPreds == YTestBatchI).sum()
+      numSamplesI = netPreds.size(0)
+      valAccFeatures[i] = numCorrectI.item() / numSamplesI
+
+    # Just leave after 1 fold, for feature importance that is fine
+    break
+
+  # Compute the normalized feature importance
+  valAccFeaturesStandardized = np.zeros((numFeatures,))
+  for i in range(numFeatures):
+    valAccFeaturesStandardized[i] = valAccNormal - valAccFeatures[i]
+  vafs = valAccFeaturesStandardized
+  vafs = (vafs.max(axis=0) - vafs) / (vafs.max(axis=0) - vafs.min(axis=0))
+  normalizedFeatureImportance = vafs
+
+  # Create a bar graph for normalized feature importance
+  plt.bar(np.arange(numFeatures), normalizedFeatureImportance, align='center', alpha=0.5)
+  plt.xticks(np.arange(numFeatures), XLabels, rotation='vertical')
+  plt.ylabel('Normalized Feature Importance')
+  plt.title('Normalized Feature Importance')
+  plt.tight_layout()
+  plt.savefig('../../data/nnNormalizedFeatureImportance.png')
+  plt.close()
+
+  # Return
   return
 
 
@@ -168,10 +285,10 @@ def main():
     device = torch.device('cuda')
   else:
     device = torch.device('cpu')
-  _, XDrivers, _, _, YDrivers = standardizeDataDims()
-  NumClasses = 3 # 10
-  X, Y = prepareData(XDrivers, YDrivers, NumClasses)
-  run(device, X, Y, NumClasses)
+  _, XDrivers, XLabels, _, YDrivers = standardizeDataDims()
+  X, Y = prepareData(XDrivers, YDrivers)
+  run(device, X, Y)
+  featureImportance(device, X, XLabels, Y)
   return
 
 

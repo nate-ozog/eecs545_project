@@ -9,7 +9,7 @@ from data_primer import standardizeDataDims
 # Hyperparameters
 learningRate = 0.01
 momentum = 0.9
-epochs = 128
+epochs = 256
 batchSize = 64
 nfold = 10
 numClasses = 10
@@ -262,6 +262,7 @@ def featureImportance(device, X, XLabels, Y):
   for i in range(numFeatures):
     valAccFeaturesStandardized[i] = valAccNormal - valAccFeatures[i]
   vafs = valAccFeaturesStandardized
+  valAccFeaturesErr = 1 - vafs
   vafs = (vafs.max(axis=0) - vafs) / (vafs.max(axis=0) - vafs.min(axis=0))
   normalizedFeatureImportance = vafs
 
@@ -272,6 +273,15 @@ def featureImportance(device, X, XLabels, Y):
   plt.title('Normalized Feature Importance')
   plt.tight_layout()
   plt.savefig('../../data/nnNormalizedFeatureImportance.png')
+  plt.close()
+
+  # Create a bar graph for feature importance
+  plt.bar(np.arange(numFeatures), valAccFeaturesErr, align='center', alpha=0.5)
+  plt.xticks(np.arange(numFeatures), XLabels, rotation='vertical')
+  plt.ylabel('Feature Importance')
+  plt.title('Feature Importance')
+  plt.tight_layout()
+  plt.savefig('../../data/nnFeatureImportance.png')
   plt.close()
 
   # Return

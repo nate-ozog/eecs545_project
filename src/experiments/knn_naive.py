@@ -89,12 +89,8 @@ X,Y = shuffle(X, Y)
 error_rate = []
 score_list = []
 cv_list = []
-
-error_rate = []
-score_list = []
-cv_list = []
 precision = 0
-reacll = 0
+recall = 0
 
 nfold = 10
 kf = KFold(n_splits=nfold)
@@ -118,7 +114,7 @@ for i in range(1,2):
         error += np.mean(y_pred != YTest)
         score += knn.score(XTest, YTest)
         precision += precision_score(YTest, y_pred, average=None)
-        reacll += recall_score(YTest, y_pred, average=None)
+        recall += recall_score(YTest, y_pred, average=None)
         print("Baseline Validation Precision: " + str(precision_score(YTest, y_pred, average=None)))
         print("Baseline Validation Recall: " + str(recall_score(YTest, y_pred, average=None)))
     
@@ -127,7 +123,7 @@ for i in range(1,2):
     # Print the cv accuracy, precision, recall
     print("Average score = " + str(score*1.0/nfold))
     print("Average Validation Precision: " + str(precision*1.0/nfold))
-    print("Average Validation Recall: " + str(precision*1.0/nfold))
+    print("Average Validation Recall: " + str(recall*1.0/nfold))
     
     print("Double check cv socre with the sklearn build in cv function ")
     # Double check cv socre with the sklearn build in cv function

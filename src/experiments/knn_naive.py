@@ -19,13 +19,16 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import classification_report,confusion_matrix
+from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import KFold
+from sklearn.utils import shuffle
+from sklearn.metrics import recall_score
+from sklearn.metrics import precision_score
 
 
 DATA_FILE = "../../data/data.npy"
 
-def prepareData(XDrivers, YDrivers, NumClasses):
-    
-###  Refer to Nate-orog's nn.py to prepare the dataset
+def prepareData(XDrivers, YDrivers,numClasses):
   """
   Normalizes data on a per-driver basis. Normalizes
   every feature column between 0 and 1. Organizes
@@ -33,7 +36,7 @@ def prepareData(XDrivers, YDrivers, NumClasses):
   i.e. 2 classes means the boundary of stressed vs
   not stressed is 0.5. Ideally, we want a range, for
   example a classification of 1-10 means
-  NumClasses = 10.
+  numClasses = 10.
   """
   # Constants
   N = 0
@@ -47,13 +50,13 @@ def prepareData(XDrivers, YDrivers, NumClasses):
     N += Xi.shape[0]
     D = Xi.shape[1]
 
-  # Create NumClasses one-hot vectors for classification
-  yRange = np.arange(NumClasses + 1)
+  # Create numClasses one-hot vectors for classification
+  yRange = np.arange(numClasses + 1)
   yRange = (yRange - yRange.min(axis=0)) / (yRange.max(axis=0) - yRange.min(axis=0))
   for i in range(numDrivers):
     Yi = YDrivers[i]
     YiC = np.zeros(Yi.shape)
-    for j in range(1, NumClasses):
+    for j in range(1, numClasses):
       lBound = yRange[j]
       uBound = yRange[j + 1]
       YiC += np.where((lBound < Yi) & (Yi <= uBound), j, 0)
@@ -74,31 +77,12 @@ def prepareData(XDrivers, YDrivers, NumClasses):
   return X, Y
 
 
+
 ### Prepare data 
 _, XDrivers, _, _, YDrivers = standardizeDataDims()
-NumClasses = 3
+NumClasses = 10
 X, Y = prepareData(XDrivers, YDrivers, NumClasses)
-X_train, X_test, y_train, y_test = train_test_split(X, Y, test_size=0.30)
-                
-
-# We'll start with k=1.
-
-knn = KNeighborsClassifier(n_neighbors=1)
-np.asarray(y_train).reshape(-1, 1)
-knn.fit(X_train,y_train)
-
-KNeighborsClassifier(algorithm='auto', leaf_size=30, metric='minkowski',
-           metric_params=None, n_jobs=1, n_neighbors=1, p=2,
-           weights='uniform')
-           
-
-pred = knn.predict(X_test)
-
-#Predicting and evavluations 
-#Let's evaluate our knn model.
-
-print(confusion_matrix(y_test,pred))
-print(classification_report(y_test,pred))
+X,Y = shuffle(X, Y)
 
 ## K = 1-40
 
@@ -106,58 +90,66 @@ error_rate = []
 score_list = []
 cv_list = []
 
-fold = 5
-for i in range(1,40):
-    
+error_rate = []
+score_list = []
+cv_list = []
+precision = 0
+reacll = 0
 
-    knn = KNeighborsClassifier(n_neighbors=i)
-    knn.fit(X_train,y_train)
-    pred_i = knn.predict(X_test)
-    error = np.mean(pred_i != y_test)
-    error_rate.append(error)
-    score = knn.score(X_test, y_test)
-    score_list.append(score)
-    cv_scores = np.mean(cross_val_score(knn, X, Y, cv = fold)) 
-    cv_list.append(cv_scores)
+nfold = 10
+kf = KFold(n_splits=nfold)
+       
+for i in range(1,2):
+    
+    error = 0
+    score = 0
+    
+    for trainIdx, testIdx in kf.split(X):
+        
+        knn = KNeighborsClassifier(i)
+        XTrain = X[trainIdx]
+        YTrain = Y[trainIdx]
+        XTest = X[testIdx]
+        YTest = Y[testIdx]
+    
+        knn.fit(XTrain,YTrain)
+        y_pred = knn.predict(XTest)
+        
+        error += np.mean(y_pred != YTest)
+        score += knn.score(XTest, YTest)
+        precision += precision_score(YTest, y_pred, average=None)
+        reacll += recall_score(YTest, y_pred, average=None)
+        print("Baseline Validation Precision: " + str(precision_score(YTest, y_pred, average=None)))
+        print("Baseline Validation Recall: " + str(recall_score(YTest, y_pred, average=None)))
+    
+    #score_list.append(score*1.0/nfold)
+    
+    # Print the cv accuracy, precision, recall
+    print("Average score = " + str(score*1.0/nfold))
+    print("Average Validation Precision: " + str(precision*1.0/nfold))
+    print("Average Validation Recall: " + str(precision*1.0/nfold))
+    
+    print("Double check cv socre with the sklearn build in cv function ")
+    # Double check cv socre with the sklearn build in cv function
+    knn = KNeighborsClassifier(i)
+    cv_scores = cross_val_score(knn, X, Y, cv = nfold) 
+    cv_scores = np.mean(cv_scores)
+    cv_list.append(np.mean(cv_scores))
     print("K nearest neigbor = " + str(i))
-    print("Naive score = " + str(score)) 
-    print(str(fold)+" fold Cross validation score = " + str(cv_scores)) 
-
-plt.figure(figsize=(10,6))
-#plt.plot(range(1,20),error_rate,color='blue', linestyle='dashed', marker='o',markerfacecolor='red', markersize=10)
-plot1 = plt.figure(1)
-plt.plot(range(1,20),score_list,color='blue', linestyle='dashed', marker='o',markerfacecolor='red', markersize=10)
-plot2 = plt.figure(2)
-plt.plot(range(1,20),cv_list,color='blue', linestyle='dashed', marker='o',markerfacecolor='red', markersize=10)
-plt.title('Error Rate vs. K Value')
-plt.xlabel('K')
-plt.ylabel('Error Rate')
-
     
-## Check K = 1 again
-#knn = KNeighborsClassifier(n_neighbors=1)
-#knn.fit(X_train,y_train)
-#pred = knn.predict(X_test)
-
-#print('WITH K=1')
-#print('\n')
-#print(confusion_matrix(y_test,pred))
-#print('\n')
-#print(classification_report(y_test,pred))
-
-## Now compare with K = 16
-#knn = KNeighborsClassifier(n_neighbors=16)
-#knn.fit(X_train,y_train)
-#pred = knn.predict(X_test)
-
-#print('WITH K=16')
-#print('\n')
-#print(confusion_matrix(y_test,pred))
-#print('\n')
-#print(classification_report(y_test,pred))
+    # Print the cv result from sklearn.cross_val_socre
+    print(str(nfold)+" fold Cross validation score = " + str(cv_scores))
+    
+    
 
 
-
-
-
-
+# Plot the result for different K 
+#plt.figure(figsize=(10,6))
+#plot1 = plt.figure(1)
+#plt.plot(range(1,21),error_rate,color='blue', linestyle='dashed', marker='o',markerfacecolor='red', markersize=10)
+#plot1 = plt.figure(1)
+#plt.plot(range(1,21),score_list,color='blue', linestyle='dashed', marker='o',markerfacecolor='red', markersize=10)
+#plt.plot(range(1,20),cv_list,color='blue', linestyle='dashed', marker='o',markerfacecolor='red', markersize=10)
+#plt.title('Accuracy vs. K Value')
+#plt.xlabel('K')
+#plt.ylabel('Accuracy')

@@ -1,6 +1,8 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+import time
+from torchsummary import summary
 from sklearn.model_selection import KFold
 from data_primer import standardizeDataDims
 
@@ -14,6 +16,7 @@ batchSize = 64
 nfold = 10
 numClasses = 10
 numFeatures = 18
+latencyTestBatchSize = 50
 
 
 
@@ -98,6 +101,7 @@ def run(device, X, Y):
   # K-Fold validation variables
   numCorrect = 0
   numSamples = 0
+  PRMat = np.zeros((numClasses, numClasses))
 
   # K-Fold iterations
   nfold = 10
@@ -155,6 +159,13 @@ def run(device, X, Y):
     numCorrect += (netPreds == YTestBatch).sum()
     numSamples += netPreds.size(0)
 
+    # Fill our precision/recall matrix
+    for i in range(netPreds.shape[0]):
+      predicted = netPreds[i].item()
+      actual = YTestBatch[i].item()
+      PRMat[predicted][actual] += 1
+    PRMat = PRMat.astype(int)
+
     # Print current accuracy as of this k-iter, update k-iter
     print("Current accuracy:", numCorrect.item() / numSamples)
     kItr += 1
@@ -164,7 +175,20 @@ def run(device, X, Y):
   avgLoss = avgLossMat.mean(axis=0)
   print("Final accuracy:", valAcc)
 
-  # Save loss figure and validation accuracy if better than prior solution
+  # Compute average precision and recall
+  prColSum = PRMat.sum(axis=0)
+  prRowSum = PRMat.sum(axis=1)
+  precisSum = 0.0
+  recallSum = 0.0
+  for i in range(numClasses):
+    precisSum += PRMat[i][i] / prColSum[i]
+    recallSum += PRMat[i][i] / prRowSum[i]
+  avgPrecis = precisSum / numClasses
+  avgRecall = recallSum / numClasses
+  print("Average precision:", avgPrecis)
+  print("Average recall:", avgRecall)
+
+  # Save loss figure, val-acc, precision, and recall if better than prior solution
   bestValAcc = np.load("../../data/nnBestValAcc.npy")
   if (valAcc > bestValAcc):
     print("Better than prior solution, saving")
@@ -176,6 +200,8 @@ def run(device, X, Y):
     plt.savefig('../../data/nnAvgLoss.png')
     plt.close()
     np.save("../../data/nnBestValAcc.npy", valAcc)
+    np.save("../../data/nnBestValAccAvgPrecision.npy", avgPrecis)
+    np.save("../../data/nnBestValAccAvgRecall.npy", avgRecall)
   else:
     print("Not better than prior solution")
 
@@ -289,6 +315,56 @@ def featureImportance(device, X, XLabels, Y):
 
 
 
+def datasetDistribution(Y):
+  dist = np.zeros((numClasses,))
+  for i in range(numClasses):
+    cnt = Y[Y == i]
+    dist[i] = cnt.shape[0]
+  distLables = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
+  plt.bar(np.arange(numClasses), dist, align='center', alpha=0.5)
+  plt.xticks(np.arange(numClasses), distLables, rotation='vertical')
+  plt.ylabel('Count')
+  plt.title('Stress Level (Scale of 1 to 10)')
+  plt.tight_layout()
+  plt.savefig('../../data/affectiveROADStressDistribution.png')
+  plt.close()
+  return
+
+
+
+def measureLatency(device, X, Y):
+  # Get a random set of data of latency batch size
+  p = np.random.permutation(latencyTestBatchSize)
+  X = X[p]
+  Y = Y[p]
+
+  # Send testing to device
+  X = torch.from_numpy(X).float().to(device)
+  Y = torch.from_numpy(Y).long().to(device)
+  XBatch = torch.autograd.Variable(X)
+  YBatch = torch.autograd.Variable(Y)
+
+  # Create new neural network and send to device
+  net = Network(X.shape[1], 128, 256, 128, numClasses)
+  net = net.to(device)
+  optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum)
+  lossFunction = torch.nn.CrossEntropyLoss()
+
+  # Time the model average across a bunch of iterations
+  iters = 100000
+  startTime = time.time_ns()
+  for _ in range(iters):
+    netOut = net(XBatch)
+    _, netPreds = netOut.max(1)
+  endTime = time.time_ns()
+  runtime = (endTime - startTime) / iters
+  print(latencyTestBatchSize, "predictions made in", runtime, "nanoseconds")
+
+  # Return
+  return
+
+
+
 def main():
   np.random.seed(545)
   if torch.cuda.is_available():
@@ -297,8 +373,10 @@ def main():
     device = torch.device('cpu')
   _, XDrivers, XLabels, _, YDrivers = standardizeDataDims()
   X, Y = prepareData(XDrivers, YDrivers)
+  datasetDistribution(Y)
   run(device, X, Y)
   featureImportance(device, X, XLabels, Y)
+  measureLatency(device, X, Y)
   return
 
 

@@ -9,11 +9,11 @@ from data_primer import standardizeDataDims
 
 
 # Hyperparameters
-learningRate = 0.01
+learningRate = 0.1 # 0.01
 momentum = 0.9
-epochs = 256
-batchSize = 64
-nfold = 10
+epochs = 512 # 256
+batchSize = 64 * 64 # 64
+nfold = 10000
 numClasses = 10
 numFeatures = 18
 latencyTestBatchSize = 50
@@ -94,9 +94,9 @@ def prepareData(XDrivers, YDrivers):
 
 def run(device, X, Y):
   # Shuffle X and Y data to diversify gradient descent between drivers
-  p = np.random.permutation(X.shape[0])
-  X = X[p]
-  Y = Y[p]
+  # p = np.random.permutation(X.shape[0])
+  # X = X[p]
+  # Y = Y[p]
 
   # K-Fold validation variables
   numCorrect = 0
@@ -104,7 +104,6 @@ def run(device, X, Y):
   PRMat = np.zeros((numClasses, numClasses))
 
   # K-Fold iterations
-  nfold = 10
   avgLossMat = np.zeros((nfold, epochs))
   kItr = 0
   kf = KFold(n_splits=nfold)
@@ -375,8 +374,8 @@ def main():
   X, Y = prepareData(XDrivers, YDrivers)
   datasetDistribution(Y)
   run(device, X, Y)
-  featureImportance(device, X, XLabels, Y)
-  measureLatency(device, X, Y)
+  # featureImportance(device, X, XLabels, Y)
+  # measureLatency(device, X, Y)
   return
 
 

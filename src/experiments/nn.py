@@ -9,35 +9,32 @@ from data_primer import standardizeDataDims
 
 
 # Hyperparameters
-learningRate = 0.1 # 0.01
+learningRate = 0.1
 momentum = 0.9
-epochs = 512 # 256
-batchSize = 64 * 64 # 64
-nfold = 10000
+weightDecay = 0.001
+dampening = 0.001
+epochs = 2048
 numClasses = 10
 numFeatures = 18
 latencyTestBatchSize = 50
+H0 = 32
+H1 = 32
 
 
 
 class Network(torch.nn.Module):
-  def __init__(self, D_in, H0, H1, H2, D_out):
+  def __init__(self, D_in, H0, H1, D_out):
     super(Network, self).__init__()
+    self.relu = torch.nn.ReLU()
     self.l1 = torch.nn.Linear(D_in, H0)
-    self.relu = torch.nn.ReLU()
     self.l2 = torch.nn.Linear(H0, H1)
-    self.relu = torch.nn.ReLU()
-    self.l3 = torch.nn.Linear(H1, H2)
-    self.relu = torch.nn.ReLU()
-    self.l4 = torch.nn.Linear(H2, D_out)
+    self.l3 = torch.nn.Linear(H1, D_out)
   def forward(self, x):
     x = self.l1(x)
     x = self.relu(x)
     x = self.l2(x)
     x = self.relu(x)
     x = self.l3(x)
-    x = self.relu(x)
-    x = self.l4(x)
     return torch.nn.functional.log_softmax(x, dim=1)
 
 
@@ -76,7 +73,7 @@ def prepareData(XDrivers, YDrivers):
       YiC += np.where((lBound < Yi) & (Yi <= uBound), j, 0)
     YDrivers[i] = YiC
 
-  # Combine into a large N x D matrix
+  # Combine into combined matrix.
   X = np.zeros((N, D))
   Y = np.zeros((N))
   startIdx = 0
@@ -88,65 +85,74 @@ def prepareData(XDrivers, YDrivers):
     startIdx = endIdx
 
   # Return data
-  return X, Y
+  return XDrivers, X, YDrivers, Y
 
 
 
-def run(device, X, Y):
-  # Shuffle X and Y data to diversify gradient descent between drivers
-  # p = np.random.permutation(X.shape[0])
-  # X = X[p]
-  # Y = Y[p]
+def getLODOIterData(XDrivers, YDrivers, LODOIdx):
+  numDrivers = len(XDrivers)
 
-  # K-Fold validation variables
+  # Get testing data from LODO
+  XTest = XDrivers[LODOIdx]
+  YTest = YDrivers[LODOIdx]
+  D = XTest.shape[1]
+
+  # Get training data for everyone except the driver we are leaving out
+  NTrain = 0
+  for i in range(numDrivers):
+    if (i != LODOIdx):
+      NTrain += XDrivers[i].shape[0]
+  XTrain = np.zeros((NTrain, D))
+  YTrain = np.zeros((NTrain,))
+  startIdx = 0
+  endIdx = 0
+  for i in range(numDrivers):
+    if (i != LODOIdx):
+      endIdx = startIdx + XDrivers[i].shape[0]
+      XTrain[startIdx:endIdx] = XDrivers[i]
+      YTrain[startIdx:endIdx] = YDrivers[i]
+      startIdx = endIdx
+
+  # Return the split data
+  return XTrain, YTrain, XTest, YTest
+
+
+
+def run(device, XDrivers, YDrivers):
+  numDrivers = len(XDrivers)
+
+  # LODO validation variables
   numCorrect = 0
   numSamples = 0
   PRMat = np.zeros((numClasses, numClasses))
 
   # K-Fold iterations
-  avgLossMat = np.zeros((nfold, epochs))
-  kItr = 0
-  kf = KFold(n_splits=nfold)
-  for trainIdx, testIdx in kf.split(X):
-    # Get data for K-iteration
-    XTrain = X[trainIdx]
-    YTrain = Y[trainIdx]
-    XTest = X[testIdx]
-    YTest = Y[testIdx]
+  avgLossMat = np.zeros((numDrivers, epochs))
+  for i in range(numDrivers):
+    XTrain, YTrain, XTest, YTest = getLODOIterData(XDrivers, YDrivers, i)
 
     # Create new neural network and send to device
-    net = Network(X.shape[1], 128, 256, 128, numClasses)
+    net = Network(XTrain.shape[1], H0, H1, numClasses)
     net = net.to(device)
-    optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum)
+    optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum, dampening=dampening, weight_decay=weightDecay)
     lossFunction = torch.nn.CrossEntropyLoss()
 
     # Send testing data to device
     XTrain = torch.from_numpy(XTrain).float().to(device)
     YTrain = torch.from_numpy(YTrain).long().to(device)
 
-    # Run training, suffle data after every epoch
-    for i in range(epochs):
-      p = np.random.permutation(XTrain.shape[0])
-      XTrain = XTrain[p]
-      YTrain = YTrain[p]
-      numLoss = 0
-      lossSum = 0
-      # Run batches for epoch
-      for j in range(0, XTrain.shape[0], batchSize):
-        XMiniBatch = torch.autograd.Variable(XTrain[j:j + batchSize])
-        YMiniBatch = torch.autograd.Variable(YTrain[j:j + batchSize])
-        optimizer.zero_grad()
-        netOut = net(XMiniBatch)
-        loss = lossFunction(netOut, YMiniBatch)
-        loss.backward()
-        optimizer.step()
-        lossSum += loss.item()
-        numLoss += 1
-      # Store to our average loss matrix
-      avgLossMat[kItr][i] = lossSum / numLoss
-      # Print average loss every few iterations
-      if i % 16 == 0:
-        print("Average loss:", avgLossMat[kItr][i])
+    # Run training
+    for j in range(epochs):
+      XTrainBatch = torch.autograd.Variable(XTrain)
+      YTrainBatch = torch.autograd.Variable(YTrain)
+      optimizer.zero_grad()
+      netOut = net(XTrainBatch)
+      loss = lossFunction(netOut, YTrainBatch)
+      loss.backward()
+      optimizer.step()
+      avgLossMat[i][j] = loss.item()
+      if not j % 32:
+        print("Epoch (", j+1, "/", epochs, ") - Avg Loss:", avgLossMat[i][j])
 
     # Run testing
     XTest = torch.from_numpy(XTest).float().to(device)
@@ -159,24 +165,23 @@ def run(device, X, Y):
     numSamples += netPreds.size(0)
 
     # Fill our precision/recall matrix
-    for i in range(netPreds.shape[0]):
-      predicted = netPreds[i].item()
-      actual = YTestBatch[i].item()
+    for j in range(netPreds.shape[0]):
+      predicted = netPreds[j].item()
+      actual = YTestBatch[j].item()
       PRMat[predicted][actual] += 1
     PRMat = PRMat.astype(int)
 
-    # Print current accuracy as of this k-iter, update k-iter
-    print("Current accuracy:", numCorrect.item() / numSamples)
-    kItr += 1
+    # Print current accuracy after one LODO iteration
+    print("LODO Itr Complete - Current accuracy:", numCorrect.item() / numSamples)
 
-  # After all k-fold validation do data analysis
+  # After all LODO iterations do data analysis
   valAcc = numCorrect.item() / numSamples
   avgLoss = avgLossMat.mean(axis=0)
   print("Final accuracy:", valAcc)
 
   # Compute average precision and recall
-  prColSum = PRMat.sum(axis=0)
-  prRowSum = PRMat.sum(axis=1)
+  prColSum = PRMat.sum(axis=0) + 1
+  prRowSum = PRMat.sum(axis=1) + 1
   precisSum = 0.0
   recallSum = 0.0
   for i in range(numClasses):
@@ -209,46 +214,32 @@ def run(device, X, Y):
 
 
 
-def featureImportance(device, X, XLabels, Y):
-  # Shuffle X and Y data to diversify gradient descent between drivers
-  p = np.random.permutation(X.shape[0])
-  X = X[p]
-  Y = Y[p]
+def featureImportance(device, XDrivers, XLabels, YDrivers):
+  numDrivers = len(XDrivers)
 
-  # K-Fold iterations
-  kf = KFold(n_splits=nfold)
-  for trainIdx, testIdx in kf.split(X):
-    # Get data for K-iteration
-    XTrain = X[trainIdx]
-    YTrain = Y[trainIdx]
-    XTest = X[testIdx]
-    YTest = Y[testIdx]
+  for i in range(numDrivers):
+    XTrain, YTrain, XTest, YTest = getLODOIterData(XDrivers, YDrivers, i)
 
     # Create new neural network and send to device
-    net = Network(X.shape[1], 128, 256, 128, numClasses)
+    net = Network(XTrain.shape[1], H0, H1, numClasses)
     net = net.to(device)
-    optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum)
+    optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum, dampening=dampening, weight_decay=weightDecay)
     lossFunction = torch.nn.CrossEntropyLoss()
 
     # Send testing data to device
     XTrain = torch.from_numpy(XTrain).float().to(device)
     YTrain = torch.from_numpy(YTrain).long().to(device)
 
-    # Run training, suffle data after every epoch
-    for i in range(epochs):
-      p = np.random.permutation(XTrain.shape[0])
-      XTrain = XTrain[p]
-      YTrain = YTrain[p]
-      # Run batches for epoch
-      for j in range(0, XTrain.shape[0], batchSize):
-        XMiniBatch = torch.autograd.Variable(XTrain[j:j + batchSize])
-        YMiniBatch = torch.autograd.Variable(YTrain[j:j + batchSize])
-        optimizer.zero_grad()
-        netOut = net(XMiniBatch)
-        loss = lossFunction(netOut, YMiniBatch)
-        loss.backward()
-        optimizer.step()
-      if i % 16 == 0:
+    # Run training
+    for j in range(epochs):
+      XTrainBatch = torch.autograd.Variable(XTrain)
+      YTrainBatch = torch.autograd.Variable(YTrain)
+      optimizer.zero_grad()
+      netOut = net(XTrainBatch)
+      loss = lossFunction(netOut, YTrainBatch)
+      loss.backward()
+      optimizer.step()
+      if not j % 32:
         print("In featureImportance() still training...")
 
     # Run testing with no randomization.
@@ -344,9 +335,9 @@ def measureLatency(device, X, Y):
   YBatch = torch.autograd.Variable(Y)
 
   # Create new neural network and send to device
-  net = Network(X.shape[1], 128, 256, 128, numClasses)
+  net = Network(X.shape[1], H0, H1, numClasses)
   net = net.to(device)
-  optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum)
+  optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum, dampening=dampening, weight_decay=weightDecay)
   lossFunction = torch.nn.CrossEntropyLoss()
 
   # Time the model average across a bunch of iterations
@@ -365,17 +356,16 @@ def measureLatency(device, X, Y):
 
 
 def main():
-  np.random.seed(545)
   if torch.cuda.is_available():
     device = torch.device('cuda')
   else:
     device = torch.device('cpu')
   _, XDrivers, XLabels, _, YDrivers = standardizeDataDims()
-  X, Y = prepareData(XDrivers, YDrivers)
+  XDrivers, X, YDrivers, Y = prepareData(XDrivers, YDrivers)
   datasetDistribution(Y)
-  run(device, X, Y)
-  # featureImportance(device, X, XLabels, Y)
-  # measureLatency(device, X, Y)
+  run(device, XDrivers, YDrivers)
+  featureImportance(device, XDrivers, XLabels, YDrivers)
+  measureLatency(device, X, Y)
   return
 
 

@@ -126,7 +126,7 @@ def run(device, XDrivers, YDrivers):
   numSamples = 0
   PRMat = np.zeros((numClasses, numClasses))
 
-  # K-Fold iterations
+  # LODO cross validation
   avgLossMat = np.zeros((numDrivers, epochs))
   for i in range(numDrivers):
     XTrain, YTrain, XTest, YTest = getLODOIterData(XDrivers, YDrivers, i)

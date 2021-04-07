@@ -1,38 +1,29 @@
 """
-SVM Prelim Experiments Code.
+SVM Model Supervised Training, Validation, and Testing Experimental Code.
 Author: Arman
 """
 # imports
 import os, random, math, time
-import pickle
 import numpy as np 
+import sklearn
+from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
+from sklearn.svm import SVC
 import matplotlib.pyplot as plt
 
-import data_primer
-from data_primer import standardizeDataDims
-
-import sklearn
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.svm import SVC
-from sklearn.metrics import classification_report,confusion_matrix
-from sklearn.model_selection import cross_val_score
-from sklearn.model_selection import KFold
-from sklearn.utils import shuffle
-from sklearn.metrics import recall_score
-from sklearn.metrics import precision_score
+import data_primer # for data standardization preprocessing
 
 # Constants
-DATA_FILE = "../../data/data.npy"
-error_rate = []
-score_list = []
-cv_list = []
+DATA_FILE = "../../data/data.npy" # make sure you extract data.zip
+#OUTPUT_FILE = "../../Evaluation/svm_train.txt"
+
+# Validation constant results
 accuracy = []
 precision = []
 recall = []
 detection_time = []
+memory_usage = []
 
-def prepareData(XDrivers, YDrivers,numClasses):
+def prepareData(XDrivers, YDrivers): # taken from Nathan's nn.py code
   """
   Normalizes data on a per-driver basis. Normalizes
   every feature column between 0 and 1. Organizes
@@ -45,6 +36,8 @@ def prepareData(XDrivers, YDrivers,numClasses):
   # Constants
   N = 0
   D = 0
+
+  numClasses = 5 # play around to see what gives the best results
 
   # Normalize the feature data
   numDrivers = len(XDrivers)
@@ -80,62 +73,142 @@ def prepareData(XDrivers, YDrivers,numClasses):
   # Return data
   return X, Y
 
+class SVM_Model():
+    """
+    The SVM class model.
+    Purpose: performs training, validation, and evaluation of an SVM classifier instance.
+    """
+    def __init__(self, c, kernel_func):
+        """
+        Initialize the SVM model.
+        Input:
+            C: The initial C value hyperparameter (regularization parameter)
+            Kernel: The kernel function used (linear, poly, rbf, sigmoid)
+        """
+        self.C = c
+        self.kernel = kernel_func
+        self.model = SVC(C=c, kernel=kernel_func, decision_function_shape='ovr')
+        return
+    
+    def fit(self, X_train, y_train):
+        # Train the model
+        self.model.fit(X_train, y_train)
+        return
+    
+    def predict(self, X):
+        # Predict y values from X
+        return self.model.predict(X)
+    
+def training(model, X_trains, y_trains):
+    """
+    Training SVM model.
+    """
+    #print(feature_names)
+    X = X_trains # all 18 normalized features
+    y = y_trains
 
+    # for each driver, train and save the model
+    model.fit(X, y)
+    #model.save_model(i)
 
-def validation(num_folds):
-    # Prepare data
-    _, XDrivers, _, _, YDrivers = standardizeDataDims()
-    NumClasses = 10
-    X, Y = prepareData(XDrivers, YDrivers, NumClasses)
-    X,Y = shuffle(X, Y)
+def validation(model, X_vals, y_vals):
+    """
+    Perform validation and testing.
+    """
+    #model = model.load_model(i)c
+    X = X_vals
+    y = y_vals
 
-    error_rate = []
-    score_list = []
-    cv_list = []
-
-    nfold = num_folds
-            
-    error = 0
-    score = 0
-        
-    kf = KFold(n_splits=nfold)
-    for trainIdx, testIdx in kf.split(X):
-        # Get data for K-iteration
-        XTrain = X[trainIdx]
-        YTrain = Y[trainIdx]
-        XTest = X[testIdx]
-        YTest = Y[testIdx]
-
-        # model
-        svm = SVC(C=10, kernel='rbf', cache_size=7000)
-
-        # train, validate and output results
-        print("Training...")
-        svm.fit(XTrain,YTrain)
-        print("Validating...")
+    # perform testing on sliding windows of size 50 for latency
+    start = 0
+    while start + 50 < len(X):
         time_start = time.time()
-        y_pred = svm.predict(XTest)
+        preds = model.predict(X[start:start + 50])
         detection_time.append(time.time() - time_start)
+        accuracy.append(accuracy_score(y[start:start+50], preds))
+        precision.append(precision_score(y[start:start+50], preds, average='macro'))
+        recall.append(recall_score(y[start:start+50], preds, average='macro'))
+    return
 
-        print("Getting results...")
-        error.append(np.mean(y_pred != YTest))
-        accuracy.append(accuracy_score(YTest, y_pred))
-        precision.append(precision_score(YTest, y_pred, average=None))
-        recall.append(recall_score(YTest, y_pred, average=None))
-        print("Baseline Validation Accuracy: " + str(accuracy_score(YTest, y_pred)))
-        print("Baseline Validation Precision: " + str(precision_score(YTest, y_pred, average=None)))
-        print("Baseline Validation Recall: " + str(recall_score(YTest, y_pred, average=None)))
+def label_dataset(y):
+    """
+    Label datasets for multi-class classification.
+    """
+    num_classes = 3
+    y_labeled = np.zeros(shape=y.shape)
+    y_normalized = (y - y.min()) / (y.max() - y.min())
+    for i in range(len(y)):
+        if y[i] >= 0.67:
+            y_labeled[i] = 2
+        elif y[i] >= 0.34:
+            y_labeled[i] = 1
+        else:
+            y_labeled[i] = 0
 
-    # Print the cv accuracy, precision, recall
-    print("Average Validation Accuracy: " + str(np.mean(accuracy)))
-    print("Average Validation Precision: " + str(np.mean(precision)))
-    print("Average Validation Recall: " + str(np.mean(recall)))
-    print("Average Detection Time: " + str(np.mean(detection_time)))
+    return y_labeled
+
+def split_dataset(X, y):
+    """
+    Split the dataset into training-validation.
+    """
+    y = label_dataset(y)
+    train_idx = math.floor(len(X) * 0.8)
+    #val_idx = math.floor(len(X) * 0.8)
+    X_train = X[:train_idx]
+    X_val = X[train_idx:]
+    y_train = y[:train_idx]
+    y_val = y[train_idx:]
+    return X_train, X_val, y_train, y_val
+
+def data_distribution(y):
+    """
+    Visualize the class distribution of the data to ensure no heavily skewed classes
+    in the data split.
+    """
+    split_idx = math.floor(len(y) * 0.8)
+    y_0 = y[:split_idx].tolist()
+    y_1 = y[split_idx:].tolist()
+    x = [1, 2, 3]
+    width = 0.5
+
+    # Plot the distribution of classes
+    plt.figure()
+    count_0 = y_0.count(0)
+    count_1 = y_0.count(1)
+    count_2 = y_0.count(2)
+    plt.title("Training Data Class Distribution")
+    plt.bar(x, [count_0, count_1, count_2], width)
+    plt.savefig('training_dist.pdf', dpi=500)
+
+    plt.figure()
+    count_0 = y_1.count(0)
+    count_1 = y_1.count(1)
+    count_2 = y_1.count(2)
+    plt.title("Testing Data Class Distribution")
+    plt.bar(x, [count_0, count_1, count_2], width)
+    plt.savefig('testing_dist.pdf', dpi=500)
+
+    return
+
+def output_results():
+    # Output average results
+    print("Average Accuracy: " + str(np.mean(accuracy)))
+    print("Average Precision: " + str(np.mean(precision)))
+    print("Average Recall: " + str(np.mean(recall)))
+    print("Average Latency: " + str(np.mean(detection_time)))
+    return
 
 
 def main():
-    num_folds = 5
-    validation(num_folds)
+    svm_model = SVM_Model(10, 'rbf', random_state=42)
+    _, XDrivers, XLabels, _, YDrivers = data_primer.standardizeDataDims()
+    X, y = prepareData(XDrivers, YDrivers)
+    #data_distribution(y)
+
+    X_train, X_val, y_train, y_val = split_dataset(X, y)
+    training(svm_model, X_train, y_train)
+    validation(svm_model, X_val, y_val)
+    output_results()
     return
 
 if __name__=="__main__":

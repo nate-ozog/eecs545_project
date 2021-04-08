@@ -10,7 +10,7 @@ from data_primer import standardizeDataDims
 
 # Hyperparameters
 numFeatures = 18
-numClasses = 10
+numClasses = 3
 epochs = 100
 minibatchSize = 1000 # Large values will make GPU run out of memory
 sequenceLen = 100    # Sample rate means approx. 50 seq size is 1s of real time data

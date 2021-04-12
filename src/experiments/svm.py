@@ -2,11 +2,13 @@
 SVM Model Supervised Training, Validation, and Testing Experimental Code.
 Author: Arman
 """
+# TODO: Performance results and visualizations for paper
+
 # imports
 import os, random, math, time
 import numpy as np 
 import sklearn
-from sklearn.metrics import accuracy_score, precision_score, recall_score, confusion_matrix
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.svm import SVC
 import matplotlib.pyplot as plt
 
@@ -17,11 +19,18 @@ DATA_FILE = "../../data/data.npy" # make sure you extract data.zip
 #OUTPUT_FILE = "../../Evaluation/svm_train.txt"
 
 # Validation constant results
+all_acc = []
+all_prec = []
+all_rec = []
+all_f1 = []
+detection_time = []
+memory_usage = []
+
+# for LODO iterations
 accuracy = []
 precision = []
 recall = []
-detection_time = []
-memory_usage = []
+f_1 = []
 
 def prepareData(XDrivers, YDrivers): # taken from Nathan's nn.py code
   """
@@ -71,13 +80,37 @@ def prepareData(XDrivers, YDrivers): # taken from Nathan's nn.py code
     startIdx = endIdx
 
   # Return data
-  return X, Y
+  return X, XDrivers, Y, YDrivers
+
+def getLODOIterData(XDrivers, YDrivers, LODOIdx): # from Nathan's rnn.py
+  numDrivers = len(XDrivers)
+
+  # Get testing data from LODO
+  XTest = XDrivers[LODOIdx]
+  YTest = YDrivers[LODOIdx]
+  D = XTest.shape[1]
+
+  # Get training data for everyone except the driver we are leaving out
+  NTrain = 0
+  for i in range(numDrivers):
+    if (i != LODOIdx):
+      NTrain += XDrivers[i].shape[0]
+  XTrain = np.zeros((NTrain, D))
+  YTrain = np.zeros((NTrain,))
+  startIdx = 0
+  endIdx = 0
+  for i in range(numDrivers):
+    if (i != LODOIdx):
+      endIdx = startIdx + XDrivers[i].shape[0]
+      XTrain[startIdx:endIdx] = XDrivers[i]
+      YTrain[startIdx:endIdx] = YDrivers[i]
+      startIdx = endIdx
+
+  # Return the split data
+  return XTrain, YTrain, XTest, YTest
 
 class SVM_Model():
-    """
-    The SVM class model.
-    Purpose: performs training, validation, and evaluation of an SVM classifier instance.
-    """
+    """SVM Class."""
     def __init__(self, c, kernel_func):
         """
         Initialize the SVM model.
@@ -87,7 +120,7 @@ class SVM_Model():
         """
         self.C = c
         self.kernel = kernel_func
-        self.model = SVC(C=c, kernel=kernel_func, decision_function_shape='ovr')
+        self.model = SVC(C=c, kernel=kernel_func, decision_function_shape='ovr', random_state=42)
         return
     
     def fit(self, X_train, y_train):
@@ -104,20 +137,18 @@ def training(model, X_trains, y_trains):
     Training SVM model.
     """
     #print(feature_names)
-    X = X_trains # all 18 normalized features
-    y = y_trains
+    X = feature_extraction(X_trains) # all 18 normalized features
+    y = new_label(y_trains)
 
     # for each driver, train and save the model
     model.fit(X, y)
-    #model.save_model(i)
 
 def validation(model, X_vals, y_vals):
     """
     Perform validation and testing.
     """
-    #model = model.load_model(i)c
-    X = X_vals
-    y = y_vals
+    X = feature_extraction(X_vals)
+    y = new_label(y_vals)
 
     # perform testing on sliding windows of size 50 for latency
     start = 0
@@ -128,87 +159,106 @@ def validation(model, X_vals, y_vals):
         accuracy.append(accuracy_score(y[start:start+50], preds))
         precision.append(precision_score(y[start:start+50], preds, average='macro'))
         recall.append(recall_score(y[start:start+50], preds, average='macro'))
+        f_1.append(f1_score(y[start:start+50], preds, average='macro'))
+        all_acc.append(accuracy_score(y[start:start+50], preds))
+        all_prec.append(precision_score(y[start:start+50], preds, average='macro'))
+        all_rec.append(recall_score(y[start:start+50], preds, average='macro'))
+        all_f1.append(f1_score(y[start:start+50], preds, average='macro'))
+        start += 50
     return
 
-def label_dataset(y):
+def feature_extraction(X):
     """
-    Label datasets for multi-class classification.
+    Feature extraction:
+    Mean, Standard Deviation, Maximum, Minimum
     """
-    num_classes = 3
-    y_labeled = np.zeros(shape=y.shape)
-    y_normalized = (y - y.min()) / (y.max() - y.min())
-    for i in range(len(y)):
-        if y[i] >= 0.67:
-            y_labeled[i] = 2
-        elif y[i] >= 0.34:
-            y_labeled[i] = 1
+    n = math.floor(len(X)/25)-1
+    extracted_feats = np.zeros((n,1)) ##9727 for 40 window, 7781 for 50 window
+    # sliding window approach
+
+    for i in range(18):
+        start = 0
+        end = 50
+        mean = []
+        std = []
+        max_ = []
+        min_ = []
+        while start + 50 < len(X):
+            # mean, std, max, min
+            mean.append(X[:, [i]][start:end].mean())
+            std.append(X[:, [i]][start:end].std())
+            max_.append(X[:, [i]][start:end].max())
+            min_.append(X[:, [i]][start:end].min())
+            start += 25
+            end = start + 50
+
+        extracted_feats = np.append(extracted_feats, np.array(mean).reshape(len(mean),1),1)
+        extracted_feats = np.append(extracted_feats, np.array(std).reshape(len(std),1),1)
+        extracted_feats = np.append(extracted_feats, np.array(max_).reshape(len(max_),1),1)
+        extracted_feats = np.append(extracted_feats, np.array(min_).reshape(len(min_),1),1)
+
+    print(np.shape(extracted_feats))
+    return np.array(extracted_feats)
+
+def new_label(y):
+    """
+    New label for a vector of extracted features.
+    """
+    new_output = []
+    # sliding window approach
+    start = 0
+    end = 50
+
+    while start + 50 < len(y):
+        new_label = y[start:end].mean()
+        if new_label >= 0.67:
+            new_output.append(2)
+        elif new_label >= 0.33:
+            new_output.append(1)
         else:
-            y_labeled[i] = 0
+            new_output.append(0)
+        start += 25
+        end = start + 50
 
-    return y_labeled
+    return np.array(new_output)
 
-def split_dataset(X, y):
-    """
-    Split the dataset into training-validation.
-    """
-    y = label_dataset(y)
-    train_idx = math.floor(len(X) * 0.8)
-    #val_idx = math.floor(len(X) * 0.8)
-    X_train = X[:train_idx]
-    X_val = X[train_idx:]
-    y_train = y[:train_idx]
-    y_val = y[train_idx:]
-    return X_train, X_val, y_train, y_val
-
-def data_distribution(y):
-    """
-    Visualize the class distribution of the data to ensure no heavily skewed classes
-    in the data split.
-    """
-    split_idx = math.floor(len(y) * 0.8)
-    y_0 = y[:split_idx].tolist()
-    y_1 = y[split_idx:].tolist()
-    x = [1, 2, 3]
-    width = 0.5
-
-    # Plot the distribution of classes
-    plt.figure()
-    count_0 = y_0.count(0)
-    count_1 = y_0.count(1)
-    count_2 = y_0.count(2)
-    plt.title("Training Data Class Distribution")
-    plt.bar(x, [count_0, count_1, count_2], width)
-    plt.savefig('training_dist.pdf', dpi=500)
-
-    plt.figure()
-    count_0 = y_1.count(0)
-    count_1 = y_1.count(1)
-    count_2 = y_1.count(2)
-    plt.title("Testing Data Class Distribution")
-    plt.bar(x, [count_0, count_1, count_2], width)
-    plt.savefig('testing_dist.pdf', dpi=500)
-
-    return
-
-def output_results():
-    # Output average results
+def output_LODO_iteration():
+    # Output average results for LODO
     print("Average Accuracy: " + str(np.mean(accuracy)))
     print("Average Precision: " + str(np.mean(precision)))
     print("Average Recall: " + str(np.mean(recall)))
+    print("Average F1: " + str(np.mean(f_1)))
     print("Average Latency: " + str(np.mean(detection_time)))
+    return
+
+def output_average_results():
+    # Output average results
+    print("Average across all LODO folds:")
+    print("Average Accuracy: " + str(np.mean(all_acc)))
+    print("Average Precision: " + str(np.mean(all_prec)))
+    print("Average Recall: " + str(np.mean(all_rec)))
+    print("Average F1: " + str(np.mean(all_rec)))
     return
 
 
 def main():
-    svm_model = SVM_Model(10, 'rbf', random_state=42)
     _, XDrivers, XLabels, _, YDrivers = data_primer.standardizeDataDims()
-    X, y = prepareData(XDrivers, YDrivers)
-    #data_distribution(y)
+    X, XDrivers, y, ydrivers = prepareData(XDrivers, YDrivers)
 
-    X_train, X_val, y_train, y_val = split_dataset(X, y)
-    training(svm_model, X_train, y_train)
-    validation(svm_model, X_val, y_val)
-    output_results()
+    # Leave One Driver Out (LODO)
+    num_drivers = len(XDrivers)
+    for i in range(num_drivers):
+        print("Driver " + str(i) + " left out...")
+        svm_model = SVM_Model(10, 'rbf')
+        X_train, y_train, X_val, y_val = getLODOIterData(XDrivers, YDrivers, i)
+        training(svm_model, X_train, y_train)
+        validation(svm_model, X_val, y_val)
+        output_LODO_iteration()
+        accuracy.clear()
+        precision.clear()
+        recall.clear()
+        f_1.clear()
+    output_average_results()
     return
 
 if __name__=="__main__":

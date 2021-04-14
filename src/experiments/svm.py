@@ -16,7 +16,7 @@ import data_primer # for data standardization preprocessing
 
 # Constants
 DATA_FILE = "../../data/data.npy" # make sure you extract data.zip
-#OUTPUT_FILE = "../../Evaluation/svm_train.txt"
+OUTPUT_FILE = "../../Evaluation/"
 
 # Validation constant results
 all_acc = []
@@ -109,8 +109,7 @@ def getLODOIterData(XDrivers, YDrivers, LODOIdx): # from Nathan's rnn.py
   # Return the split data
   return XTrain, YTrain, XTest, YTest
 
-class SVM_Model():
-    """SVM Class."""
+class SVM():
     def __init__(self, c, kernel_func):
         """
         Initialize the SVM model.
@@ -147,24 +146,24 @@ def validation(model, X_vals, y_vals):
     """
     Perform validation and testing.
     """
-    X = feature_extraction(X_vals)
-    y = new_label(y_vals)
-
     # perform testing on sliding windows of size 50 for latency
     start = 0
-    while start + 50 < len(X):
+    # window sizes of 500 samples
+    while start + 500 < len(X_vals):
+        y = new_label(y_vals[start:start+500])
         time_start = time.time()
-        preds = model.predict(X[start:start + 50])
+        X = feature_extraction(X_vals[start:start+500])
+        preds = model.predict(X)
         detection_time.append(time.time() - time_start)
-        accuracy.append(accuracy_score(y[start:start+50], preds))
-        precision.append(precision_score(y[start:start+50], preds, average='macro'))
-        recall.append(recall_score(y[start:start+50], preds, average='macro'))
-        f_1.append(f1_score(y[start:start+50], preds, average='macro'))
-        all_acc.append(accuracy_score(y[start:start+50], preds))
-        all_prec.append(precision_score(y[start:start+50], preds, average='macro'))
-        all_rec.append(recall_score(y[start:start+50], preds, average='macro'))
-        all_f1.append(f1_score(y[start:start+50], preds, average='macro'))
-        start += 50
+        accuracy.append(accuracy_score(y, preds))
+        precision.append(precision_score(y, preds, average='macro'))
+        recall.append(recall_score(y, preds, average='macro'))
+        f_1.append(f1_score(y, preds, average='macro'))
+        all_acc.append(accuracy_score(y, preds))
+        all_prec.append(precision_score(y, preds, average='macro'))
+        all_rec.append(recall_score(y, preds, average='macro'))
+        all_f1.append(f1_score(y, preds, average='macro'))
+        start += 500
     return
 
 def feature_extraction(X):
@@ -172,10 +171,7 @@ def feature_extraction(X):
     Feature extraction:
     Mean, Standard Deviation, Maximum, Minimum
     """
-    n = math.floor(len(X)/25)-1
-    extracted_feats = np.zeros((n,1)) ##9727 for 40 window, 7781 for 50 window
     # sliding window approach
-
     for i in range(18):
         start = 0
         end = 50
@@ -183,6 +179,7 @@ def feature_extraction(X):
         std = []
         max_ = []
         min_ = []
+        n = 0
         while start + 50 < len(X):
             # mean, std, max, min
             mean.append(X[:, [i]][start:end].mean())
@@ -191,13 +188,14 @@ def feature_extraction(X):
             min_.append(X[:, [i]][start:end].min())
             start += 25
             end = start + 50
+            n += 1
 
+        extracted_feats = np.zeros((n, 1)) 
         extracted_feats = np.append(extracted_feats, np.array(mean).reshape(len(mean),1),1)
         extracted_feats = np.append(extracted_feats, np.array(std).reshape(len(std),1),1)
         extracted_feats = np.append(extracted_feats, np.array(max_).reshape(len(max_),1),1)
         extracted_feats = np.append(extracted_feats, np.array(min_).reshape(len(min_),1),1)
 
-    print(np.shape(extracted_feats))
     return np.array(extracted_feats)
 
 def new_label(y):
@@ -240,6 +238,10 @@ def output_average_results():
     print("Average F1: " + str(np.mean(all_rec)))
     return
 
+def write_results_to_file():
+    # Write performance results to txt file
+    return
+
 
 def main():
     _, XDrivers, XLabels, _, YDrivers = data_primer.standardizeDataDims()
@@ -249,7 +251,7 @@ def main():
     num_drivers = len(XDrivers)
     for i in range(num_drivers):
         print("Driver " + str(i) + " left out...")
-        svm_model = SVM_Model(10, 'rbf')
+        svm_model = SVM(10, 'rbf')
         X_train, y_train, X_val, y_val = getLODOIterData(XDrivers, YDrivers, i)
         training(svm_model, X_train, y_train)
         validation(svm_model, X_val, y_val)

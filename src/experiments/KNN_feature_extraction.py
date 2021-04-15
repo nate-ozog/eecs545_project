@@ -150,11 +150,11 @@ def new_label(y):
     start = 0
     end = 50
     
-    while start + 50 < len(y):
+    while start + 50 < len(X):
         new_label = y[start:end].mean()
-        if new_label >= 0.67:
+        if new_label >= 1.5:
             new_output.append(2)
-        elif new_label >= 0.33:
+        elif new_label >= 0.5:
             new_output.append(1)
         else:
             new_output.append(0)

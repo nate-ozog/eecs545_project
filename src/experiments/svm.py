@@ -46,7 +46,7 @@ def prepareData(XDrivers, YDrivers): # taken from Nathan's nn.py code
   N = 0
   D = 0
 
-  numClasses = 5 # play around to see what gives the best results
+  numClasses = 3 # play around to see what gives the best results
 
   # Normalize the feature data
   numDrivers = len(XDrivers)
@@ -175,6 +175,12 @@ def feature_extraction(X):
     Mean, Standard Deviation, Maximum, Minimum
     """
     # sliding window approach
+    n = 0
+    start = 0
+    while start + 50 < len(X):
+        n += 1
+        start += 25
+    extracted_feats = np.zeros((n, 1)) 
     for i in range(18):
         start = 0
         end = 50
@@ -193,12 +199,12 @@ def feature_extraction(X):
             end = start + 50
             n += 1
 
-        extracted_feats = np.zeros((n, 1)) 
         extracted_feats = np.append(extracted_feats, np.array(mean).reshape(len(mean),1),1)
         extracted_feats = np.append(extracted_feats, np.array(std).reshape(len(std),1),1)
         extracted_feats = np.append(extracted_feats, np.array(max_).reshape(len(max_),1),1)
         extracted_feats = np.append(extracted_feats, np.array(min_).reshape(len(min_),1),1)
-
+        
+    extracted_feats = extracted_feats[:, 1:]
     return np.array(extracted_feats)
 
 def new_label(y):
@@ -209,12 +215,12 @@ def new_label(y):
     # sliding window approach
     start = 0
     end = 50
-
+    # multi-class classification
     while start + 50 < len(y):
         new_label = y[start:end].mean()
-        if new_label >= 0.67:
+        if new_label >= 1.5:
             new_output.append(2)
-        elif new_label >= 0.33:
+        elif new_label >= 0.5:
             new_output.append(1)
         else:
             new_output.append(0)
@@ -257,7 +263,7 @@ def write_results_to_file():
 
 def main():
     _, XDrivers, XLabels, _, YDrivers = data_primer.standardizeDataDims()
-    X, XDrivers, y, ydrivers = prepareData(XDrivers, YDrivers)
+    X, XDrivers, y, YDrivers = prepareData(XDrivers, YDrivers)
 
     # Leave One Driver Out (LODO)
     num_drivers = len(XDrivers)

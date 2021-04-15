@@ -261,7 +261,7 @@ def main():
 
     # Leave One Driver Out (LODO)
     num_drivers = len(XDrivers)
-    for i in range(0):
+    for i in range(num_drivers):
         print("Driver " + str(i) + " left out...")
         svm_model = SVM(10, 'rbf')
         X_train, y_train, X_val, y_val = getLODOIterData(XDrivers, YDrivers, i)

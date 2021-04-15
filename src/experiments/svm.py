@@ -11,12 +11,12 @@ import sklearn
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.svm import SVC
 import matplotlib.pyplot as plt
-
+import resource
 import data_primer # for data standardization preprocessing
 
 # Constants
 DATA_FILE = "../../data/data.npy" # make sure you extract data.zip
-OUTPUT_FILE = "../../Evaluation/"
+OUTPUT_DIR = "../../Evaluation/"
 
 # Validation constant results
 all_acc = []
@@ -150,11 +150,14 @@ def validation(model, X_vals, y_vals):
     start = 0
     # window sizes of 500 samples
     while start + 500 < len(X_vals):
+        memory_usage.append(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         y = new_label(y_vals[start:start+500])
         time_start = time.time()
         X = feature_extraction(X_vals[start:start+500])
+        memory_usage.append(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         preds = model.predict(X)
         detection_time.append(time.time() - time_start)
+        memory_usage.append(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         accuracy.append(accuracy_score(y, preds))
         precision.append(precision_score(y, preds, average='macro'))
         recall.append(recall_score(y, preds, average='macro'))
@@ -220,15 +223,6 @@ def new_label(y):
 
     return np.array(new_output)
 
-def output_LODO_iteration():
-    # Output average results for LODO
-    print("Average Accuracy: " + str(np.mean(accuracy)))
-    print("Average Precision: " + str(np.mean(precision)))
-    print("Average Recall: " + str(np.mean(recall)))
-    print("Average F1: " + str(np.mean(f_1)))
-    print("Average Latency: " + str(np.mean(detection_time)))
-    return
-
 def output_average_results():
     # Output average results
     print("Average across all LODO folds:")
@@ -236,10 +230,28 @@ def output_average_results():
     print("Average Precision: " + str(np.mean(all_prec)))
     print("Average Recall: " + str(np.mean(all_rec)))
     print("Average F1: " + str(np.mean(all_rec)))
+    print("Average Latency: " + str(np.mean(detection_time)))
+    print("Average Memory Usage: " + str(np.mean(memory_usage))) 
     return
 
 def write_results_to_file():
     # Write performance results to txt file
+    if not os.path.exists(OUTPUT_DIR):
+        os.makedirs(OUTPUT_DIR)
+
+    f = open(os.path.join(OUTPUT_DIR, "svm.txt"), "w")
+    f.write("Average across all LODO folds\n")
+    f.write("Average Accuracy: " + str(np.mean(all_acc)) + "\n")
+    f.write("Std Accuracy: " + str(np.std(all_acc)) + "\n")
+    f.write("Average Precision: " + str(np.mean(all_prec)) + "\n")
+    f.write("Std Precision: " + str(np.std(all_prec)) + "\n")
+    f.write("Average Recall: " + str(np.mean(all_rec)) + "\n")
+    f.write("Std Recall: " + str(np.std(all_rec)) + "\n")
+    f.write("Average F1: " + str(np.mean(all_rec)) + "\n")
+    f.write("Std F1: " + str(np.std(all_rec)) + "\n")
+    f.write("Average Latency: " + str(np.mean(detection_time)) + "\n")
+    f.write("Average Memory Usage: " + str(np.mean(memory_usage)) + "\n") 
+    f.close()
     return
 
 
@@ -249,18 +261,21 @@ def main():
 
     # Leave One Driver Out (LODO)
     num_drivers = len(XDrivers)
-    for i in range(num_drivers):
+    for i in range(0):
         print("Driver " + str(i) + " left out...")
         svm_model = SVM(10, 'rbf')
         X_train, y_train, X_val, y_val = getLODOIterData(XDrivers, YDrivers, i)
+        print("Training...")
         training(svm_model, X_train, y_train)
+        print("Validating on Driver " + str(i))
         validation(svm_model, X_val, y_val)
-        output_LODO_iteration()
         accuracy.clear()
         precision.clear()
         recall.clear()
         f_1.clear()
+    # print results and write same results to txt file
     output_average_results()
+    write_results_to_file()
     return
 
 if __name__=="__main__":

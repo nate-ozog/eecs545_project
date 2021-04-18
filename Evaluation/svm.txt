@@ -1,0 +1,11 @@
+Average across all LODO folds
+Average Accuracy: 0.6996345029239766
+Std Accuracy: 0.34760719655675604
+Average Precision: 0.6325126210541264
+Std Precision: 0.3376820104382214
+Average Recall: 0.5960339333868745
+Std Recall: 0.3637783184533324
+Average F1: 0.5960339333868745
+Std F1: 0.3637783184533324
+Average Latency: 0.0333095509754984
+Average Memory Usage: 379976.0

@@ -6,7 +6,7 @@ Author: Arman
 
 # imports
 import os, random, math, time
-import numpy as np 
+import numpy as np
 import sklearn
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.svm import SVC
@@ -46,7 +46,7 @@ def prepareData(XDrivers, YDrivers): # taken from Nathan's nn.py code
   N = 0
   D = 0
 
-  numClasses = 3 # play around to see what gives the best results
+  numClasses = 2 # play around to see what gives the best results
 
   # Normalize the feature data
   numDrivers = len(XDrivers)
@@ -121,16 +121,16 @@ class SVM():
         self.kernel = kernel_func
         self.model = SVC(C=c, kernel=kernel_func, decision_function_shape='ovr', random_state=42)
         return
-    
+
     def fit(self, X_train, y_train):
         # Train the model
         self.model.fit(X_train, y_train)
         return
-    
+
     def predict(self, X):
         # Predict y values from X
         return self.model.predict(X)
-    
+
 def training(model, X_trains, y_trains):
     """
     Training SVM model.
@@ -148,7 +148,7 @@ def validation(model, X_vals, y_vals):
     """
     # perform testing on sliding windows of size 50 for latency
     start = 0
-    # window sizes of 500 samples
+    # window sizes of 50 samples
     while start + 500 < len(X_vals):
         memory_usage.append(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
         y = new_label(y_vals[start:start+500])
@@ -166,7 +166,7 @@ def validation(model, X_vals, y_vals):
         all_prec.append(precision_score(y, preds, average='macro'))
         all_rec.append(recall_score(y, preds, average='macro'))
         all_f1.append(f1_score(y, preds, average='macro'))
-        start += 500
+        start += 250
     return
 
 def feature_extraction(X):
@@ -180,14 +180,15 @@ def feature_extraction(X):
     while start + 50 < len(X):
         n += 1
         start += 25
-    extracted_feats = np.zeros((n, 1)) 
-    for i in range(18):
+    extracted_feats = np.zeros((n, 1))
+    for i in range(18): # extract features for all features
         start = 0
         end = 50
         mean = []
         std = []
         max_ = []
         min_ = []
+        range_ = []
         n = 0
         while start + 50 < len(X):
             # mean, std, max, min
@@ -195,15 +196,18 @@ def feature_extraction(X):
             std.append(X[:, [i]][start:end].std())
             max_.append(X[:, [i]][start:end].max())
             min_.append(X[:, [i]][start:end].min())
+            range_.append(np.max(X[:, [i]][start:end]) - np.min(X[:, [i]][start:end]))
             start += 25
             end = start + 50
             n += 1
 
+        # concatenate the extracted features
         extracted_feats = np.append(extracted_feats, np.array(mean).reshape(len(mean),1),1)
         extracted_feats = np.append(extracted_feats, np.array(std).reshape(len(std),1),1)
         extracted_feats = np.append(extracted_feats, np.array(max_).reshape(len(max_),1),1)
         extracted_feats = np.append(extracted_feats, np.array(min_).reshape(len(min_),1),1)
-        
+        extracted_feats = np.append(extracted_feats, np.array(range_).reshape(len(range_),1),1)
+
     extracted_feats = extracted_feats[:, 1:]
     return np.array(extracted_feats)
 
@@ -218,9 +222,7 @@ def new_label(y):
     # multi-class classification
     while start + 50 < len(y):
         new_label = y[start:end].mean()
-        if new_label >= 1.5:
-            new_output.append(2)
-        elif new_label >= 0.5:
+        if new_label >= 0.5:
             new_output.append(1)
         else:
             new_output.append(0)
@@ -237,7 +239,18 @@ def output_average_results():
     print("Average Recall: " + str(np.mean(all_rec)))
     print("Average F1: " + str(np.mean(all_rec)))
     print("Average Latency: " + str(np.mean(detection_time)))
-    print("Average Memory Usage: " + str(np.mean(memory_usage))) 
+    print("Average Memory Usage: " + str(np.mean(memory_usage)))
+    return
+
+def output_current_LODO():
+    # Output average results
+    print("Average across all LODO folds:")
+    print("Average Accuracy: " + str(np.mean(accuracy)))
+    print("Average Precision: " + str(np.mean(precision)))
+    print("Average Recall: " + str(np.mean(recall)))
+    print("Average F1: " + str(np.mean(f_1)))
+    print("Average Latency: " + str(np.mean(detection_time)))
+    print("Average Memory Usage: " + str(np.mean(memory_usage)))
     return
 
 def write_results_to_file():
@@ -256,7 +269,7 @@ def write_results_to_file():
     f.write("Average F1: " + str(np.mean(all_rec)) + "\n")
     f.write("Std F1: " + str(np.std(all_rec)) + "\n")
     f.write("Average Latency: " + str(np.mean(detection_time)) + "\n")
-    f.write("Average Memory Usage: " + str(np.mean(memory_usage)) + "\n") 
+    f.write("Average Memory Usage: " + str(np.mean(memory_usage)) + "\n")
     f.close()
     return
 
@@ -275,6 +288,7 @@ def main():
         training(svm_model, X_train, y_train)
         print("Validating on Driver " + str(i))
         validation(svm_model, X_val, y_val)
+        output_current_LODO()
         accuracy.clear()
         precision.clear()
         recall.clear()

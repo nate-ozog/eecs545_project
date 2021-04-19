@@ -2,21 +2,30 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import random
 from torchsummary import summary
 from sklearn.model_selection import KFold
 from data_primer import standardizeDataDims
 
 
 
+# Seed all RNG sources
+torch.manual_seed(545)
+random.seed(545)
+np.random.seed(545)
+
+
+
 # Hyperparameters
-numFeatures = 18
+numFeatures = 72
 numClasses = 3
-epochs = 100
-minibatchSize = 1000 # Large values will make GPU run out of memory
-sequenceLen = 100    # Sample rate means approx. 50 seq size is 1s of real time data
-numLayers = 2        # LSTM hidden layers
-hiddenSize = 5       # LSTM hidden layer size
-learningRate = 0.001
+epochs = 4096
+minibatchSize = 5000
+sequenceLen = 50
+numLayers = 2
+hiddenSize = 16
+learningRate = 0.005
+weightDecay = 0.01
 
 
 
@@ -115,6 +124,70 @@ def getLODOIterData(XDrivers, YDrivers, LODOIdx):
 
 
 
+def feature_extraction(X):
+    """
+    Feature extraction:
+    Mean, Standard Deviation, Maximum, Minimum
+    """
+    # sliding window approach
+    n = 0
+    start = 0
+    while start + 50 < len(X):
+        n += 1
+        start += 25
+    extracted_feats = np.zeros((n, 1))
+    for i in range(18):
+        start = 0
+        end = 50
+        mean = []
+        std = []
+        max_ = []
+        min_ = []
+        n = 0
+        while start + 50 < len(X):
+            # mean, std, max, min
+            mean.append(X[:, [i]][start:end].mean())
+            std.append(X[:, [i]][start:end].std())
+            max_.append(X[:, [i]][start:end].max())
+            min_.append(X[:, [i]][start:end].min())
+            start += 25
+            end = start + 50
+            n += 1
+
+        extracted_feats = np.append(extracted_feats, np.array(mean).reshape(len(mean),1),1)
+        extracted_feats = np.append(extracted_feats, np.array(std).reshape(len(std),1),1)
+        extracted_feats = np.append(extracted_feats, np.array(max_).reshape(len(max_),1),1)
+        extracted_feats = np.append(extracted_feats, np.array(min_).reshape(len(min_),1),1)
+
+    extracted_feats = extracted_feats[:, 1:]
+    return np.array(extracted_feats)
+
+
+
+def new_label(y):
+    """
+    New label for a vector of extracted features.
+    """
+    new_output = []
+    # sliding window approach
+    start = 0
+    end = 50
+    # multi-class classification
+    while start + 50 < len(y):
+        new_label = y[start:end].mean()
+        if new_label >= 1.5:
+            new_output.append(2)
+        elif new_label >= 0.5:
+            new_output.append(1)
+        else:
+            new_output.append(0)
+        start += 25
+        end = start + 50
+
+    return np.array(new_output)
+
+
+
 def run(device, XDrivers, YDrivers):
 
   # Get number of drivers for LODO validation iterations.
@@ -123,6 +196,12 @@ def run(device, XDrivers, YDrivers):
   # Counters for validation accuracy.
   numCorrect = 0
   numSamples = 0
+  PRMat = np.zeros((numClasses, numClasses))
+
+  # Feature extraction.
+  for i in range(numDrivers):
+    XDrivers[i] = feature_extraction(XDrivers[i])
+    YDrivers[i] = new_label(YDrivers[i])
 
   # LODO iterations.
   for i in range(numDrivers):
@@ -154,7 +233,7 @@ def run(device, XDrivers, YDrivers):
     # Create RNN LSTM.
     net = Network().to(device)
     lossFunction = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(net.parameters(), lr=learningRate, )
+    optimizer = torch.optim.Adam(net.parameters(), lr=learningRate, weight_decay=weightDecay)
 
     for j in range(epochs):
       for k in range(0, trainBatchSize, minibatchSize):
@@ -175,7 +254,7 @@ def run(device, XDrivers, YDrivers):
 
       # Print update messages.
       if j % 10 == 0:
-        print("Training Epoch (", j, "/", epochs, ")")
+        print("Training Epoch (", j, "/", epochs, "):", loss.item())
 
 
     for j in range(0, testBatchSize, minibatchSize):
@@ -193,8 +272,34 @@ def run(device, XDrivers, YDrivers):
       numCorrect += ((netPreds == YTestBatch).sum()).item()
       numSamples += netPreds.size(0)
 
+      # Fill our precision/recall matrix
+      for k in range(netPreds.shape[0]):
+        predicted = netPreds[k].item()
+        actual = YTestBatch[k].item()
+        PRMat[predicted][actual] += 1
+      PRMat = PRMat.astype(int)
+
     # Print current results.
     print("LODO Iter", i, "accuracy:", numCorrect / numSamples)
+
+  # After all LODO iterations do data analysis
+  valAcc = numCorrect / numSamples
+  print("Average Accuracy =", valAcc)
+
+  # Compute average precision and recall
+  prColSum = PRMat.sum(axis=0) + 1
+  prRowSum = PRMat.sum(axis=1) + 1
+  precisSum = 0.0
+  recallSum = 0.0
+  for i in range(numClasses):
+    precisSum += PRMat[i][i] / prColSum[i]
+    recallSum += PRMat[i][i] / prRowSum[i]
+  avgPrecis = precisSum / numClasses
+  avgRecall = recallSum / numClasses
+  avgF1 = 2 * ((avgPrecis * avgRecall) / (avgPrecis + avgRecall))
+  print("Average Validation Precision =", avgPrecis)
+  print("Average Validation Recall =", avgRecall)
+  print("Average Validation F1 =", avgF1)
 
   # Return
   return
@@ -206,8 +311,8 @@ def main():
     device = torch.device('cuda')
   else:
     device = torch.device('cpu')
-  _, XDrivers, XLabels, _, YDrivers = standardizeDataDims()
-  XDrivers, X, YDrivers, Y = prepareData(XDrivers, YDrivers)
+  _, XDrivers, _, _, YDrivers = standardizeDataDims()
+  XDrivers, _, YDrivers, _ = prepareData(XDrivers, YDrivers)
   run(device, XDrivers, YDrivers)
   return
 

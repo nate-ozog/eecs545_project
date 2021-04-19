@@ -2,21 +2,40 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import math
+import random
 from torchsummary import summary
 from sklearn.model_selection import KFold
 from data_primer import standardizeDataDims
 
 
 
+# Seed all RNG sources
+torch.manual_seed(545)
+random.seed(545)
+np.random.seed(545)
+
+
+
 # Hyperparameters
-learningRate = 0.1
-momentum = 0.9
-weightDecay = 0.001
-dampening = 0.001
-epochs = 2048
-numClasses = 10
+# learningRate = 0.1
+# momentum = 0.9
+# weightDecay = 0.01
+# dampening = 0.01
+# epochs = 65536
+# numClasses = 2
+# numFeatures = 18
+# latencyTestBatchSize = 50
+# H0 = 64
+# H1 = 64
+
+learningRate = 0.01
+momentum = 0.1
+weightDecay = 0.01
+dampening = 0.01
+epochs = 65536
+numClasses = 3
 numFeatures = 18
-latencyTestBatchSize = 50
 H0 = 32
 H1 = 32
 
@@ -118,6 +137,70 @@ def getLODOIterData(XDrivers, YDrivers, LODOIdx):
 
 
 
+def feature_extraction(X):
+    """
+    Feature extraction:
+    Mean, Standard Deviation, Maximum, Minimum
+    """
+    # sliding window approach
+    n = 0
+    start = 0
+    while start + 50 < len(X):
+        n += 1
+        start += 25
+    extracted_feats = np.zeros((n, 1))
+    for i in range(18):
+        start = 0
+        end = 50
+        mean = []
+        std = []
+        max_ = []
+        min_ = []
+        n = 0
+        while start + 50 < len(X):
+            # mean, std, max, min
+            mean.append(X[:, [i]][start:end].mean())
+            std.append(X[:, [i]][start:end].std())
+            max_.append(X[:, [i]][start:end].max())
+            min_.append(X[:, [i]][start:end].min())
+            start += 25
+            end = start + 50
+            n += 1
+
+        extracted_feats = np.append(extracted_feats, np.array(mean).reshape(len(mean),1),1)
+        extracted_feats = np.append(extracted_feats, np.array(std).reshape(len(std),1),1)
+        extracted_feats = np.append(extracted_feats, np.array(max_).reshape(len(max_),1),1)
+        extracted_feats = np.append(extracted_feats, np.array(min_).reshape(len(min_),1),1)
+
+    extracted_feats = extracted_feats[:, 1:]
+    return np.array(extracted_feats)
+
+
+
+def new_label(y):
+    """
+    New label for a vector of extracted features.
+    """
+    new_output = []
+    # sliding window approach
+    start = 0
+    end = 50
+    # multi-class classification
+    while start + 50 < len(y):
+        new_label = y[start:end].mean()
+        if new_label >= 1.5:
+            new_output.append(2)
+        elif new_label >= 0.5:
+            new_output.append(1)
+        else:
+            new_output.append(0)
+        start += 25
+        end = start + 50
+
+    return np.array(new_output)
+
+
+
 def run(device, XDrivers, YDrivers):
   numDrivers = len(XDrivers)
 
@@ -125,6 +208,11 @@ def run(device, XDrivers, YDrivers):
   numCorrect = 0
   numSamples = 0
   PRMat = np.zeros((numClasses, numClasses))
+
+  # Feature extraction.
+  for i in range(numDrivers):
+    XDrivers[i] = feature_extraction(XDrivers[i])
+    YDrivers[i] = new_label(YDrivers[i])
 
   # LODO cross validation
   avgLossMat = np.zeros((numDrivers, epochs))
@@ -151,7 +239,7 @@ def run(device, XDrivers, YDrivers):
       loss.backward()
       optimizer.step()
       avgLossMat[i][j] = loss.item()
-      if not j % 32:
+      if not j % 1024:
         print("Epoch (", j+1, "/", epochs, ") - Avg Loss:", avgLossMat[i][j])
 
     # Run testing
@@ -172,14 +260,13 @@ def run(device, XDrivers, YDrivers):
     PRMat = PRMat.astype(int)
 
     # Print current accuracy after one LODO iteration
-    print("LODO Itr Complete - Current accuracy:", numCorrect.item() / numSamples)
+    print("LODO Itr", i, "Complete - Current accuracy:", numCorrect.item() / numSamples)
 
   # After all LODO iterations do data analysis
   valAcc = numCorrect.item() / numSamples
-  avgLoss = avgLossMat.mean(axis=0)
-  print("Final accuracy:", valAcc)
+  print("Average Accuracy =", valAcc)
 
-  # Compute average precision and recall
+  # Compute average precision, recall, and F1
   prColSum = PRMat.sum(axis=0) + 1
   prRowSum = PRMat.sum(axis=1) + 1
   precisSum = 0.0
@@ -189,166 +276,10 @@ def run(device, XDrivers, YDrivers):
     recallSum += PRMat[i][i] / prRowSum[i]
   avgPrecis = precisSum / numClasses
   avgRecall = recallSum / numClasses
-  print("Average precision:", avgPrecis)
-  print("Average recall:", avgRecall)
-
-  # Save loss figure, val-acc, precision, and recall if better than prior solution
-  bestValAcc = np.load("../../data/nnBestValAcc.npy")
-  if (valAcc > bestValAcc):
-    print("Better than prior solution, saving")
-    plt.plot(avgLoss)
-    plt.xlabel('Epoch #')
-    plt.ylabel('Average Loss')
-    plt.title('Average Loss over Epochs')
-    plt.tight_layout()
-    plt.savefig('../../data/nnAvgLoss.png')
-    plt.close()
-    np.save("../../data/nnBestValAcc.npy", valAcc)
-    np.save("../../data/nnBestValAccAvgPrecision.npy", avgPrecis)
-    np.save("../../data/nnBestValAccAvgRecall.npy", avgRecall)
-  else:
-    print("Not better than prior solution")
-
-  # Return
-  return
-
-
-
-def featureImportance(device, XDrivers, XLabels, YDrivers):
-  numDrivers = len(XDrivers)
-
-  for i in range(numDrivers):
-    XTrain, YTrain, XTest, YTest = getLODOIterData(XDrivers, YDrivers, i)
-
-    # Create new neural network and send to device
-    net = Network(XTrain.shape[1], H0, H1, numClasses)
-    net = net.to(device)
-    optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum, dampening=dampening, weight_decay=weightDecay)
-    lossFunction = torch.nn.CrossEntropyLoss()
-
-    # Send testing data to device
-    XTrain = torch.from_numpy(XTrain).float().to(device)
-    YTrain = torch.from_numpy(YTrain).long().to(device)
-
-    # Run training
-    for j in range(epochs):
-      XTrainBatch = torch.autograd.Variable(XTrain)
-      YTrainBatch = torch.autograd.Variable(YTrain)
-      optimizer.zero_grad()
-      netOut = net(XTrainBatch)
-      loss = lossFunction(netOut, YTrainBatch)
-      loss.backward()
-      optimizer.step()
-      if not j % 32:
-        print("In featureImportance() still training...")
-
-    # Run testing with no randomization.
-    XTestNormal = torch.from_numpy(XTest).float().to(device)
-    YTestNormal = torch.from_numpy(YTest).long().to(device)
-    XTestBatchNormal = torch.autograd.Variable(XTestNormal)
-    YTestBatchNormal = torch.autograd.Variable(YTestNormal)
-    netOut = net(XTestBatchNormal)
-    _, netPreds = netOut.max(1)
-    numCorrectNormal = (netPreds == YTestBatchNormal).sum()
-    numSamplesNormal = netPreds.size(0)
-    valAccNormal = numCorrectNormal.item() / numSamplesNormal
-
-    # Iterate through all features and get accuracy with values randomized
-    valAccFeatures = np.zeros((numFeatures,))
-    for i in range(numFeatures):
-      N = XTest.shape[0]
-      XTestI = XTest
-      # Randomize the i-th column of XTestI
-      XTestI[:,i] = np.squeeze(np.random.rand(N, 1))
-      XTestI = torch.from_numpy(XTestI).float().to(device)
-      YTestI = torch.from_numpy(YTest).long().to(device)
-      XTestBatchI = torch.autograd.Variable(XTestI)
-      YTestBatchI = torch.autograd.Variable(YTestI)
-      netOut = net(XTestBatchI)
-      _, netPreds = netOut.max(1)
-      numCorrectI = (netPreds == YTestBatchI).sum()
-      numSamplesI = netPreds.size(0)
-      valAccFeatures[i] = numCorrectI.item() / numSamplesI
-
-    # Just leave after 1 fold, for feature importance that is fine
-    break
-
-  # Compute the normalized feature importance
-  valAccFeaturesStandardized = np.zeros((numFeatures,))
-  for i in range(numFeatures):
-    valAccFeaturesStandardized[i] = valAccNormal - valAccFeatures[i]
-  vafs = valAccFeaturesStandardized
-  valAccFeaturesErr = 1 - vafs
-  vafs = (vafs.max(axis=0) - vafs) / (vafs.max(axis=0) - vafs.min(axis=0))
-  normalizedFeatureImportance = vafs
-
-  # Create a bar graph for normalized feature importance
-  plt.bar(np.arange(numFeatures), normalizedFeatureImportance, align='center', alpha=0.5)
-  plt.xticks(np.arange(numFeatures), XLabels, rotation='vertical')
-  plt.ylabel('Normalized Feature Importance')
-  plt.title('Normalized Feature Importance')
-  plt.tight_layout()
-  plt.savefig('../../data/nnNormalizedFeatureImportance.png')
-  plt.close()
-
-  # Create a bar graph for feature importance
-  plt.bar(np.arange(numFeatures), valAccFeaturesErr, align='center', alpha=0.5)
-  plt.xticks(np.arange(numFeatures), XLabels, rotation='vertical')
-  plt.ylabel('Feature Importance')
-  plt.title('Feature Importance')
-  plt.tight_layout()
-  plt.savefig('../../data/nnFeatureImportance.png')
-  plt.close()
-
-  # Return
-  return
-
-
-
-def datasetDistribution(Y):
-  dist = np.zeros((numClasses,))
-  for i in range(numClasses):
-    cnt = Y[Y == i]
-    dist[i] = cnt.shape[0]
-  distLables = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
-  plt.bar(np.arange(numClasses), dist, align='center', alpha=0.5)
-  plt.xticks(np.arange(numClasses), distLables, rotation='vertical')
-  plt.ylabel('Count')
-  plt.title('Stress Level (Scale of 1 to 10)')
-  plt.tight_layout()
-  plt.savefig('../../data/affectiveROADStressDistribution.png')
-  plt.close()
-  return
-
-
-
-def measureLatency(device, X, Y):
-  # Get a random set of data of latency batch size
-  p = np.random.permutation(latencyTestBatchSize)
-  X = X[p]
-  Y = Y[p]
-
-  # Send testing to device
-  X = torch.from_numpy(X).float().to(device)
-  Y = torch.from_numpy(Y).long().to(device)
-  XBatch = torch.autograd.Variable(X)
-  YBatch = torch.autograd.Variable(Y)
-
-  # Create new neural network and send to device
-  net = Network(X.shape[1], H0, H1, numClasses)
-  net = net.to(device)
-  optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum, dampening=dampening, weight_decay=weightDecay)
-  lossFunction = torch.nn.CrossEntropyLoss()
-
-  # Time the model average across a bunch of iterations
-  iters = 100000
-  startTime = time.time_ns()
-  for _ in range(iters):
-    netOut = net(XBatch)
-    _, netPreds = netOut.max(1)
-  endTime = time.time_ns()
-  runtime = (endTime - startTime) / iters
-  print(latencyTestBatchSize, "predictions made in", runtime, "nanoseconds")
+  avgF1 = 2 * ((avgPrecis * avgRecall) / (avgPrecis + avgRecall))
+  print("Average Validation Precision =", avgPrecis)
+  print("Average Validation Recall =", avgRecall)
+  print("Average Validation F1 =", avgF1)
 
   # Return
   return
@@ -360,17 +291,171 @@ def main():
     device = torch.device('cuda')
   else:
     device = torch.device('cpu')
-  _, XDrivers, XLabels, _, YDrivers = standardizeDataDims()
-  XDrivers, X, YDrivers, Y = prepareData(XDrivers, YDrivers)
-  datasetDistribution(Y)
+  _, XDrivers, _, _, YDrivers = standardizeDataDims()
+  XDrivers, _, YDrivers, _ = prepareData(XDrivers, YDrivers)
   run(device, XDrivers, YDrivers)
-  featureImportance(device, XDrivers, XLabels, YDrivers)
-  measureLatency(device, X, Y)
   return
 
 
 
 if __name__=="__main__":
     main()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# def featureImportance(device, XDrivers, XLabels, YDrivers):
+#   numDrivers = len(XDrivers)
+
+#   for i in range(numDrivers):
+#     XTrain, YTrain, XTest, YTest = getLODOIterData(XDrivers, YDrivers, i)
+
+#     # Create new neural network and send to device
+#     net = Network(XTrain.shape[1], H0, H1, numClasses)
+#     net = net.to(device)
+#     optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum, dampening=dampening, weight_decay=weightDecay)
+#     lossFunction = torch.nn.CrossEntropyLoss()
+
+#     # Send testing data to device
+#     XTrain = torch.from_numpy(XTrain).float().to(device)
+#     YTrain = torch.from_numpy(YTrain).long().to(device)
+
+#     # Run training
+#     for j in range(epochs):
+#       XTrainBatch = torch.autograd.Variable(XTrain)
+#       YTrainBatch = torch.autograd.Variable(YTrain)
+#       optimizer.zero_grad()
+#       netOut = net(XTrainBatch)
+#       loss = lossFunction(netOut, YTrainBatch)
+#       loss.backward()
+#       optimizer.step()
+#       if not j % 32:
+#         print("In featureImportance() still training...")
+
+#     # Run testing with no randomization.
+#     XTestNormal = torch.from_numpy(XTest).float().to(device)
+#     YTestNormal = torch.from_numpy(YTest).long().to(device)
+#     XTestBatchNormal = torch.autograd.Variable(XTestNormal)
+#     YTestBatchNormal = torch.autograd.Variable(YTestNormal)
+#     netOut = net(XTestBatchNormal)
+#     _, netPreds = netOut.max(1)
+#     numCorrectNormal = (netPreds == YTestBatchNormal).sum()
+#     numSamplesNormal = netPreds.size(0)
+#     valAccNormal = numCorrectNormal.item() / numSamplesNormal
+
+#     # Iterate through all features and get accuracy with values randomized
+#     valAccFeatures = np.zeros((numFeatures,))
+#     for i in range(numFeatures):
+#       N = XTest.shape[0]
+#       XTestI = XTest
+#       # Randomize the i-th column of XTestI
+#       XTestI[:,i] = np.squeeze(np.random.rand(N, 1))
+#       XTestI = torch.from_numpy(XTestI).float().to(device)
+#       YTestI = torch.from_numpy(YTest).long().to(device)
+#       XTestBatchI = torch.autograd.Variable(XTestI)
+#       YTestBatchI = torch.autograd.Variable(YTestI)
+#       netOut = net(XTestBatchI)
+#       _, netPreds = netOut.max(1)
+#       numCorrectI = (netPreds == YTestBatchI).sum()
+#       numSamplesI = netPreds.size(0)
+#       valAccFeatures[i] = numCorrectI.item() / numSamplesI
+
+#     # Just leave after 1 fold, for feature importance that is fine
+#     break
+
+#   # Compute the normalized feature importance
+#   valAccFeaturesStandardized = np.zeros((numFeatures,))
+#   for i in range(numFeatures):
+#     valAccFeaturesStandardized[i] = valAccNormal - valAccFeatures[i]
+#   vafs = valAccFeaturesStandardized
+#   valAccFeaturesErr = 1 - vafs
+#   vafs = (vafs.max(axis=0) - vafs) / (vafs.max(axis=0) - vafs.min(axis=0))
+#   normalizedFeatureImportance = vafs
+
+#   # Create a bar graph for normalized feature importance
+#   plt.bar(np.arange(numFeatures), normalizedFeatureImportance, align='center', alpha=0.5)
+#   plt.xticks(np.arange(numFeatures), XLabels, rotation='vertical')
+#   plt.ylabel('Normalized Feature Importance')
+#   plt.title('Normalized Feature Importance')
+#   plt.tight_layout()
+#   plt.savefig('../../data/nnNormalizedFeatureImportance.png')
+#   plt.close()
+
+#   # Create a bar graph for feature importance
+#   plt.bar(np.arange(numFeatures), valAccFeaturesErr, align='center', alpha=0.5)
+#   plt.xticks(np.arange(numFeatures), XLabels, rotation='vertical')
+#   plt.ylabel('Feature Importance')
+#   plt.title('Feature Importance')
+#   plt.tight_layout()
+#   plt.savefig('../../data/nnFeatureImportance.png')
+#   plt.close()
+
+#   # Return
+#   return
+
+
+
+# def datasetDistribution(Y):
+#   dist = np.zeros((numClasses,))
+#   for i in range(numClasses):
+#     cnt = Y[Y == i]
+#     dist[i] = cnt.shape[0]
+#   distLables = []
+#   for i in range(numClasses):
+#     distLables.append(str(i + 1))
+#   plt.bar(np.arange(numClasses), dist, align='center', alpha=0.5)
+#   plt.xticks(np.arange(numClasses), distLables, rotation='vertical')
+#   plt.ylabel('Count')
+#   plt.title('Stress Level (Scale of 1 to 3)')
+#   plt.tight_layout()
+#   plt.savefig('../../data/affectiveROADStressDistribution.png')
+#   plt.close()
+#   return
+
+
+
+# def measureLatency(device, X):
+#   # Get a random set of data of latency batch size
+#   p = np.random.permutation(latencyTestBatchSize)
+#   X = X[p]
+
+#   # Send testing to device
+#   X = torch.from_numpy(X).float().to(device)
+#   XBatch = torch.autograd.Variable(X)
+
+#   # Create new neural network and send to device
+#   net = Network(X.shape[1], H0, H1, numClasses)
+#   net = net.to(device)
+
+#   # Time the model average across a bunch of iterations
+#   iters = 100000
+#   startTime = time.time_ns()
+#   for _ in range(iters):
+#     netOut = net(XBatch)
+#     _, netPreds = netOut.max(1)
+#   endTime = time.time_ns()
+#   runtime = (endTime - startTime) / iters
+#   print(latencyTestBatchSize, "predictions made in", runtime, "nanoseconds")
+
+#   # Return
+#   return
+
+
+
+
+
+
 
 

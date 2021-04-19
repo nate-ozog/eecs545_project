@@ -17,6 +17,7 @@ import copy
 
 import data_primer
 import sklearn
+import resource
 
 from data_primer import standardizeDataDims
 from sklearn.ensemble import AdaBoostClassifier
@@ -41,6 +42,7 @@ import scipy.signal as scisig
 import scipy.stats
 
 DATA_FILE = "./data/data.npy" # make sure you extract data.zip
+memory_usage = []
 
 def prepareData(XDrivers, YDrivers, numClasses):
   """
@@ -117,6 +119,28 @@ def getLODOIterData(XDrivers, YDrivers, LODOIdx):
     # Return the split data
     return XTrain, YTrain, XTest, YTest
 
+def output_current_LODO():
+    # Output average results
+    print("Average across all LODO folds:")
+    print("Average Accuracy: " + str(np.mean(accuracy)))
+    print("Average Precision: " + str(np.mean(precision)))
+    print("Average Recall: " + str(np.mean(recall)))
+    print("Average F1: " + str(np.mean(f_1)))
+    print("Average Latency: " + str(np.mean(detection_time)))
+    print("Average Memory Usage: " + str(np.mean(memory_usage)))
+
+def output_average_results():
+    # Output average results
+    print("Average across all LODO folds:")
+    print("Average Accuracy: " + str(np.mean(all_acc)))
+    print("Average Precision: " + str(np.mean(all_prec)))
+    print("Average Recall: " + str(np.mean(all_rec)))
+    print("Average F1: " + str(np.mean(all_rec)))
+    print("Average Latency: " + str(np.mean(detection_time)))
+    print("Average Memory Usage: " + str(np.mean(memory_usage)))
+    return
+
+
 def feature_extraction(X_driver):
     
     
@@ -174,44 +198,88 @@ def feature_extraction(X_driver):
         extracted_feats = np.append(extracted_feats, np.array(max_).reshape(len(max_),1),1)
         extracted_feats = np.append(extracted_feats, np.array(min_).reshape(len(min_),1),1)
         #extracted_feats = np.append(extracted_feats, np.array(fdm).reshape(len(fdm),1),1)
-        print("Complete extraction for feature"+str(i))
+        #print("Complete extraction for feature"+str(i))
         
             
-    print(np.shape(extracted_feats))
+    #print(np.shape(extracted_feats))
     return np.array(extracted_feats[:,:])
 
-def new_label(Y_driver):
+def new_label(Y_driver,num_classes):
     new_output = []
     # sliding window approach
     start = 0
     end = 50
     while start + 50 < len(Y_driver):
         new_label = Y_driver[start:end].mean()
-
-#####     Three classes label     
-#         if new_label >= 1.33:
-#             new_output.append(2)
-#         elif new_label >= 0.67:
-#              new_output.append(1)
-#         else:
-#             new_output.append(0)
+        
+        ####    Two classes label 
+        if num_classes == 2:      
+            if new_label >= 0.5:
+                new_output.append(1)
+            else:
+                new_output.append(0)
+         
+        ####    Three classes label 
+        if num_classes == 3:
+            if new_label >= 1.33:
+                new_output.append(2)
+            elif new_label >= 0.67:
+                new_output.append(1)
+            else:
+                new_output.append(0)
  
-####    Two classes label       
-        if new_label >= 0.5:
-            new_output.append(1)
-        else:
-            new_output.append(0)
+
             
         start += 25
         end = start + 50
     
-    print(np.shape(new_output))
+    #print(np.shape(new_output))
     return np.array(new_output)
+
+def validation(model, X_vals, y_vals,numclasses):
+    
+    """
+    Perform validation and testing.
+    """
+    # perform testing on sliding windows of size 50 for latency
+    start = 0
+    # window sizes of 50 samples
+    while start + 500 < len(X_vals):
+        memory_usage.append(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        y = new_label(y_vals[start:start+500],numclasses)
+        time_start = time.time()
+        X = feature_extraction(X_vals[start:start+500])
+        memory_usage.append(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        preds = model.predict(X)
+        detection_time.append(time.time() - time_start)
+        memory_usage.append(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        accuracy.append(accuracy_score(y, preds))
+        precision.append(precision_score(y, preds, average='macro', zero_division=0))
+        recall.append(recall_score(y, preds, average='macro', zero_division=0))
+        f_1.append(f1_score(y, preds, average='macro', zero_division=0))
+        
+        all_acc.append(accuracy_score(y, preds))
+        all_prec.append(precision_score(y, preds, average='macro', zero_division=0))
+        all_rec.append(recall_score(y, preds, average='macro', zero_division=0))
+        all_f1.append(f1_score(y, preds, average='macro', zero_division=0))
+        
+        start += 250
+    return
 
 ## K Nearest Neighbors with Python
 
 NumClasses = 2
 numDrivers = 13
+memory_usage = []
+detection_time = []
+all_acc = []
+all_prec = []
+all_rec = []
+all_f1 = []
+accuracy = []
+precision = []
+recall = []
+f_1 = []
 
 _, XDrivers, _, _, YDrivers = standardizeDataDims()
 XDrivers, X, YDrivers, Y = prepareData(XDrivers, YDrivers, NumClasses)
@@ -221,20 +289,10 @@ Y_Drivers = copy.deepcopy(YDrivers)
 
 for i in range(numDrivers):
     X_Drivers[i] = feature_extraction(XDrivers[i])
-    Y_Drivers[i] = new_label(YDrivers[i])
-    
+    Y_Drivers[i] = new_label(YDrivers[i],NumClasses)
+
+
 ## Do LoDo validation
-accuracy = []
-precision = []
-recall = []
-f1 = []
-
-ave_accuracy = []
-ave_precision = []
-ave_recall = []
-ave_f1 = []
-
-
 for i in range(13):
 #for i in (0,1,2,5,7,8,10,11):
     
@@ -253,9 +311,6 @@ for i in range(13):
             x_train = np.concatenate((x_train, X_Drivers[j]),axis = 0)
             y_train = np.concatenate((y_train,Y_Drivers[j]), axis = 0)
     
-#     print(np.shape(x_train))       
-#     print(np.shape(y_train))
-            
     if i != 0:
         x_train = X_Drivers[0]
         y_train = Y_Drivers[0]
@@ -268,60 +323,19 @@ for i in range(13):
     
     # Get LODO data
     #x_train, y_train, x_test, y_test = getLODOIterData(XDrivers, YDrivers, i)
-        
-#     pca = PCA(n_components = 30)
-#     pca.fit(fea_train)
-#     pca_train = pca.transform(fea_train)
-        
-#     pca.fit(fea_test)
-#     pca_test = pca.transform(fea_test)
 
-    model = KNeighborsClassifier(218, weights = 'distance')  ### 218 for 2 classes 900 for 3 classes
+    model = KNeighborsClassifier(187, weights = 'distance')  ### 187 for 2 classes 819 for 3 classes
     
-    model.fit(x_train[:,:],y_train)
+    model.fit(x_train,y_train)
+    validation(model, XDrivers[i], YDrivers[i],NumClasses)
+    output_current_LODO()
+    accuracy.clear()
+    precision.clear()
+    recall.clear()
+    f_1.clear()  
     
-    #y_pred = model.predict(x_test)
-    #accuracy.append(accuracy_score(y_test, y_pred))
-    #precision.append(precision_score(y_test, y_pred, average='macro', zero_division=0)) #zero_division???
-    #recall.append(recall_score(y_test, y_pred, average='macro', zero_division=0)) #zero_division???
-    #f1.append(f1_score(y_test, y_pred,average='macro', zero_division=0))
-
-    start = 0
-    
-    while start < (len(y_test)):  
-        step = 10
-        y_pred = model.predict(x_test[start:start+step,:])   
-        accuracy.append(accuracy_score(y_test[start:start+step], y_pred))
-        precision.append(precision_score(y_test[start:start+step], y_pred, average='macro', zero_division=0)) #zero_division???
-        recall.append(recall_score(y_test[start:start+step], y_pred, average='macro', zero_division=0)) #zero_division???
-        f1.append(f1_score(y_test[start:start+step], y_pred,average='macro', zero_division=0))       
-        start = start + step
-    
-    print("Drive id= " + str(i))
-    print("Validation Accuracy = " + str(np.mean(accuracy)))
-    print("Validation Precision: " + str(np.mean(precision)))
-    print("Validation Recall: " + str(np.mean(recall)))
-    print("Validation f1: " + str(np.mean(f1)))
-    
-    ave_accuracy.append(np.mean(accuracy))
-    ave_precision.append(np.mean(precision))
-    ave_recall.append(np.mean(recall))
-    ave_f1.append(np.mean(f1))
-    
-#     figure, axis = plt.subplots(2, 1)
-
-#     axis[0].hist(y_pred) 
-#     axis[1].hist(y_test) 
-    
-#     accuracy.clear()
-#     precision.clear()
-#     recall.clear()
-#     f1.clear()    
-    
-print("Average Accuracy = " + str(np.mean(ave_accuracy)))
-print("Average Validation Precision: " + str(np.mean(ave_precision)))
-print("Average Validation Recall: " + str(np.mean(ave_recall)))
-print("Average Validation f1: " + str(np.mean(ave_f1)))    
+output_average_results()
+ 
     
 
 

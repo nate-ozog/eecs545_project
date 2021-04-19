@@ -301,8 +301,9 @@ for i in range(13):
     recall = []
     f1 = []
 
-    x_test = X_Drivers[i]
-    y_test = Y_Drivers[i]
+    x_test = XDrivers[i]
+    y_test = YDrivers[i]
+    
     if i == 0:
         x_train = X_Drivers[1]
         y_train = Y_Drivers[1]
@@ -327,7 +328,7 @@ for i in range(13):
     model = KNeighborsClassifier(187, weights = 'distance')  ### 187 for 2 classes 819 for 3 classes
     
     model.fit(x_train,y_train)
-    validation(model, XDrivers[i], YDrivers[i],NumClasses)
+    validation(model, x_test, y_test,NumClasses)
     output_current_LODO()
     accuracy.clear()
     precision.clear()

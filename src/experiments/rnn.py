@@ -5,7 +5,7 @@ import time
 import random
 from torchsummary import summary
 from sklearn.model_selection import KFold
-from data_primer import standardizeDataDims
+from data_primer_modified import standardizeDataDims
 
 
 
@@ -17,15 +17,16 @@ np.random.seed(545)
 
 
 # Hyperparameters
-numFeatures = 72
+numFeatures = 18
 numClasses = 3
-epochs = 4096
+epochs = 100
 minibatchSize = 5000
 sequenceLen = 50
 numLayers = 2
 hiddenSize = 16
 learningRate = 0.005
 weightDecay = 0.01
+latAndMemAnalysisSize = 500
 
 
 
@@ -197,11 +198,6 @@ def run(device, XDrivers, YDrivers):
   numCorrect = 0
   numSamples = 0
   PRMat = np.zeros((numClasses, numClasses))
-
-  # Feature extraction.
-  for i in range(numDrivers):
-    XDrivers[i] = feature_extraction(XDrivers[i])
-    YDrivers[i] = new_label(YDrivers[i])
 
   # LODO iterations.
   for i in range(numDrivers):

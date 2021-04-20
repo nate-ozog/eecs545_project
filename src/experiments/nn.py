@@ -6,7 +6,7 @@ import math
 import random
 from torchsummary import summary
 from sklearn.model_selection import KFold
-from data_primer import standardizeDataDims
+from data_primer_modified import standardizeDataDims
 
 
 
@@ -18,26 +18,16 @@ np.random.seed(545)
 
 
 # Hyperparameters
-# learningRate = 0.1
-# momentum = 0.9
-# weightDecay = 0.01
-# dampening = 0.01
-# epochs = 65536
-# numClasses = 2
-# numFeatures = 18
-# latencyTestBatchSize = 50
-# H0 = 64
-# H1 = 64
-
 learningRate = 0.01
 momentum = 0.1
 weightDecay = 0.01
 dampening = 0.01
 epochs = 65536
-numClasses = 3
+numClasses = 2
 numFeatures = 18
 H0 = 32
 H1 = 32
+latAndMemAnalysisSize = 500
 
 
 
@@ -286,6 +276,19 @@ def run(device, XDrivers, YDrivers):
 
 
 
+def memUsage(device, XDrivers, YDrivers):
+  numDrivers = len(XDrivers)
+  for i in range(numDrivers):
+    XDrivers[i] = feature_extraction(XDrivers[i])
+    YDrivers[i] = new_label(YDrivers[i])
+  XTrain, _, _, _ = getLODOIterData(XDrivers, YDrivers, 0)
+  net = Network(XTrain.shape[1], H0, H1, numClasses)
+  net = net.to(device)
+  summary(net, XTrain[0:latAndMemAnalysisSize].shape)
+  return
+
+
+
 def main():
   if torch.cuda.is_available():
     device = torch.device('cuda')
@@ -294,6 +297,7 @@ def main():
   _, XDrivers, _, _, YDrivers = standardizeDataDims()
   XDrivers, _, YDrivers, _ = prepareData(XDrivers, YDrivers)
   run(device, XDrivers, YDrivers)
+  memUsage(device, XDrivers, YDrivers)
   return
 
 

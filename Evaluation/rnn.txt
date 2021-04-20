@@ -1,0 +1,21 @@
+2 Class
+-------
+Average Accuracy = 0.8150361594091399
+Average Validation Precision = 0.5932367678088313
+Average Validation Recall = 0.7316374944303273
+Average Validation F1 = 0.6552082333761116
+
+3 Class
+-------
+Average Accuracy = 0.6369656870287737
+Average Validation Precision = 0.4608419212536306
+Average Validation Recall = 0.420100327822686
+Average Validation F1 = 0.43952902110457187
+
+
+
+Memory Usage
+------------
+Model Size = 51392 Bytes
+
+

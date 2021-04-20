@@ -9,7 +9,7 @@ import scipy.signal as scisig
 import scipy.stats
 
 
-DATA_PATH = "./data.npy"
+DATA_PATH = "../../data/data.npy"
 fs_dict = {'ACC': 32, 'BVP': 64, 'EDA': 4, 'TEMP': 4, 'label': 700, 'Resp': 700}
 
 # Filter of EDA
@@ -44,7 +44,7 @@ def get_net_accel(data):
 def standardizeDriver(data, labels, num):
     keys = data.keys()
     Y = data["subData"]
-    
+
     if num == 0:
         Y = Y[1:11604]
     if num == 1:
@@ -71,7 +71,7 @@ def standardizeDriver(data, labels, num):
         Y = Y[1:11628]
     if num == 12:
         Y = Y[5124:18472]
-    
+
     N = Y.shape[0]
     XCols = []
     XColLables = []
@@ -80,12 +80,12 @@ def standardizeDriver(data, labels, num):
         # preprocess the data using filter:
         if (k == 'rEDA' or k == 'lEDA'):
             data[k] = butter_lowpass_filter(data[k], 1.0, fs_dict['EDA'], 6)
-        
+
         if ( k == 'rightACC' or k == 'leftACC'):
             kD = data[k].shape[1]
             for d in range(kD):
-                data[k][:,d] = filterSignalFIR(data[k][:,d])     
-        
+                data[k][:,d] = filterSignalFIR(data[k][:,d])
+
         if (k != "subData"):
             # If vector, make N x 1 (needs to be 2D to make later stuff work)
             if data[k].ndim == 1:

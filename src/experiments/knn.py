@@ -15,12 +15,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import copy
 
-import data_primer
+import data_primer_modified
 import sklearn
 import resource
 
-from data_primer import standardizeDataDims
+from data_primer_modified import standardizeDataDims
 from sklearn.ensemble import AdaBoostClassifier
+from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import BaggingClassifier
 
@@ -43,6 +44,12 @@ import scipy.stats
 
 DATA_FILE = "./data/data.npy" # make sure you extract data.zip
 memory_usage = []
+
+ada = AdaBoostClassifier()
+bag = BaggingClassifier()
+tree = DecisionTreeClassifier()
+grad = GradientBoostingClassifier()
+
 
 def prepareData(XDrivers, YDrivers, numClasses):
   """
@@ -227,8 +234,6 @@ def new_label(Y_driver,num_classes):
                 new_output.append(1)
             else:
                 new_output.append(0)
- 
-
             
         start += 25
         end = start + 50
@@ -268,7 +273,7 @@ def validation(model, X_vals, y_vals,numclasses):
 
 ## K Nearest Neighbors with Python
 
-NumClasses = 2
+NumClasses = 3
 numDrivers = 13
 memory_usage = []
 detection_time = []
@@ -296,11 +301,6 @@ for i in range(numDrivers):
 for i in range(13):
 #for i in (0,1,2,5,7,8,10,11):
     
-    accuracy = []
-    precision = []
-    recall = []
-    f1 = []
-
     x_test = XDrivers[i]
     y_test = YDrivers[i]
     
@@ -325,7 +325,8 @@ for i in range(13):
     # Get LODO data
     #x_train, y_train, x_test, y_test = getLODOIterData(XDrivers, YDrivers, i)
 
-    model = KNeighborsClassifier(187, weights = 'distance')  ### 187 for 2 classes 819 for 3 classes
+    model = KNeighborsClassifier(5500, weights = 'distance')  ### 5500 for both 2 classes abd 3 classes
+    #model = xgb
     
     model.fit(x_train,y_train)
     validation(model, x_test, y_test,NumClasses)

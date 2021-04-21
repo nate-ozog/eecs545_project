@@ -23,11 +23,12 @@ momentum = 0.1
 weightDecay = 0.01
 dampening = 0.01
 epochs = 65536
-numClasses = 2
+numClasses = 3
 numFeatures = 18
 H0 = 32
 H1 = 32
-latAndMemAnalysisSize = 500
+latencyTestBatchSize = 500
+latencyTestIters = 1000
 
 
 
@@ -276,15 +277,28 @@ def run(device, XDrivers, YDrivers):
 
 
 
-def memUsage(device, XDrivers, YDrivers):
-  numDrivers = len(XDrivers)
-  for i in range(numDrivers):
-    XDrivers[i] = feature_extraction(XDrivers[i])
-    YDrivers[i] = new_label(YDrivers[i])
-  XTrain, _, _, _ = getLODOIterData(XDrivers, YDrivers, 0)
-  net = Network(XTrain.shape[1], H0, H1, numClasses)
-  net = net.to(device)
-  summary(net, XTrain[0:latAndMemAnalysisSize].shape)
+def measureLatency(device, XDrivers, YDrivers):
+  # Get latency test data and create the net.
+  XLat, _, _, _ = getLODOIterData(XDrivers, YDrivers, 0)
+  net = Network(4 * numFeatures, H0, H1, numClasses).to(device)
+  optimizer = torch.optim.SGD(net.parameters(), lr=learningRate, momentum=momentum, dampening=dampening, weight_decay=weightDecay)
+  lossFunction = torch.nn.CrossEntropyLoss()
+  XLatPreFE = XLat[0:latencyTestBatchSize]
+
+  # Get average prediction time across a bunch of runs.
+  # This has to include feature extraction time for the
+  # batch as well, because this would have to be done
+  # in real-time as well.
+  startTime = time.time()
+  for i in range(latencyTestIters):
+    XLat = feature_extraction(XLatPreFE)
+    XLat = torch.from_numpy(XLat).float().to(device)
+    XTestBatch = torch.autograd.Variable(XLat)
+    netOut = net(XTestBatch)
+    _, netPreds = netOut.max(1)
+  endTime = time.time()
+  runtime = (endTime - startTime) / latencyTestBatchSize
+  print("Average Latency (s) =", runtime)
   return
 
 
@@ -297,7 +311,7 @@ def main():
   _, XDrivers, _, _, YDrivers = standardizeDataDims()
   XDrivers, _, YDrivers, _ = prepareData(XDrivers, YDrivers)
   run(device, XDrivers, YDrivers)
-  memUsage(device, XDrivers, YDrivers)
+  measureLatency(device, XDrivers, YDrivers)
   return
 
 

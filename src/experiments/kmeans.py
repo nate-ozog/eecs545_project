@@ -14,7 +14,6 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 # from data_primer_modified import standardizeDataDims as data
 from data_primer import standardizeDataDims as data
-import resource
 
 SEED = 1
 NUM_DRIVERS = 13
@@ -24,7 +23,6 @@ OUTFILE_NAME = 'kmeans_results.csv'
 
 def main():
     lat_arr = []
-    ram_arr = []
     prec_arr = []
     rec_arr = []
     f1_arr = []
@@ -34,9 +32,8 @@ def main():
 
     for num_classes in [2, 3]:
         for fe_extract in [True, False]:
-            lat, ram_usage, precision, recall, f1, accuracy = run_experiment(num_classes, fe_extract)
+            lat, precision, recall, f1, accuracy = run_experiment(num_classes, fe_extract)
             lat_arr.append(lat)
-            ram_arr.append(ram_usage)
             prec_arr.append(precision)
             rec_arr.append(recall)
             f1_arr.append(f1)
@@ -51,8 +48,7 @@ def main():
         'precision' : prec_arr,
         'recall' : rec_arr,
         'f1': f1_arr,
-        '50 prediction latency (ns)' : lat_arr,
-        'RAM usage' : ram_arr
+        '500 prediction latency (ms)' : lat_arr,
     }).to_csv(OUTFILE_NAME, index=False)
 
 
@@ -69,15 +65,18 @@ def run_experiment(num_classes, fe_extract):
         for i in range(NUM_DRIVERS):
             X_Drivers[i] = feature_extraction(XDrivers[i])
             Y_Drivers[i] = new_label(YDrivers[i], num_classes)
+
+    lat_test_set = XDrivers[0]
     
     print('Making elbow graph...')
     make_elbow_curve_graph(X_Drivers, fe=fe_extract)
 
+
     print('Running LODO:')
-    return run_lodo(X_Drivers, Y_Drivers)
+    return run_lodo(X_Drivers, Y_Drivers, lat_test_set, fe_extract)
 
 
-def run_lodo(X_Drivers, Y_Drivers):
+def run_lodo(X_Drivers, Y_Drivers, lat_test_set, fe_extract):
     precision = []
     recall = []
     f1 = []
@@ -115,24 +114,28 @@ def run_lodo(X_Drivers, Y_Drivers):
         if iteration == NUM_DRIVERS - 1 and TEST_LATENCY_AND_RAM:
             print("Running latency and RAM usage benchmark...")
             predict_func = lambda val : [centroid_to_label[pred] for pred in kmeans.predict(val)]
-            lat, res_usage = latency(predict_func, X_test, iters=100000)
+            lat = latency(predict_func, lat_test_set, fe_extract, iters=100000)
 
-    return lat, res_usage, np.mean(precision), np.mean(recall), np.mean(f1), np.mean(accuracy)
+    return lat, np.mean(precision), np.mean(recall), np.mean(f1), np.mean(accuracy)
 
-def latency(predict_func, X_in, iters=100000):
-    memory_usage = []
-    get_mem = lambda : resource.getrusage(resource.RUSAGE_SELF)
-    startTime = time.time_ns()
+def latency(predict_func, X_in, fe_extract, iters=100000):
+    X = copy.deepcopy(X_in)
+    startTime = time.time_ns() * 1e-6
+
     for _ in tqdm.tqdm(range(iters)):
-        some_i = iters % len(X_in)
-        end_i = some_i + 50
-        sample = X_in[some_i:end_i] if end_i < len(X_in) else X_in[:50]
-        memory_usage.append(get_mem())
+
+        some_i = iters % len(X)
+        end_i = some_i + 500
+        sample = X_in[some_i:end_i] if end_i < len(X) else X[:500]
+
+        if fe_extract:
+            sample = feature_extraction(sample)
+
         _ = predict_func(sample)
-        memory_usage.append(get_mem())
-    endTime = time.time_ns()
+    endTime = time.time_ns() * 1e-6
     runtime = (endTime - startTime) / iters
-    return runtime, np.mean(memory_usage)
+    print('Runtime (ms):', runtime)
+    return runtime
 
 def make_elbow_curve_graph(X_Drivers, fe=True):
     scores = []

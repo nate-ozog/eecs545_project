@@ -25,7 +25,6 @@ from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import BaggingClassifier
 
-
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.neighbors import KNeighborsClassifier
@@ -277,38 +276,90 @@ NumClasses = 3
 numDrivers = 13
 memory_usage = []
 detection_time = []
-all_acc = []
-all_prec = []
-all_rec = []
-all_f1 = []
-accuracy = []
-precision = []
-recall = []
-f_1 = []
-
-_, XDrivers, _, _, YDrivers = standardizeDataDims()
-XDrivers, X, YDrivers, Y = prepareData(XDrivers, YDrivers, NumClasses)
-X_Drivers = copy.deepcopy(XDrivers)
-Y_Drivers = copy.deepcopy(YDrivers)
 
 
-for i in range(numDrivers):
-    X_Drivers[i] = feature_extraction(XDrivers[i])
-    Y_Drivers[i] = new_label(YDrivers[i],NumClasses)
+
+##### Measure latency and ave acc within the batch:
+
+# all_acc = []
+# all_prec = []
+# all_rec = []
+# all_f1 = []
+# accuracy = []
+# precision = []
+# recall = []
+# f_1 = []
+
+# _, XDrivers, _, _, YDrivers = standardizeDataDims()
+# XDrivers, X, YDrivers, Y = prepareData(XDrivers, YDrivers, NumClasses)
+# X_Drivers = copy.deepcopy(XDrivers)
+# Y_Drivers = copy.deepcopy(YDrivers)
 
 
-## Do LoDo validation
-for i in range(13):
-#for i in (0,1,2,5,7,8,10,11):
+# for i in range(numDrivers):
+#     X_Drivers[i] = feature_extraction(XDrivers[i])
+#     Y_Drivers[i] = new_label(YDrivers[i],NumClasses)
+
+
+# ## Do LoDo validation
+# for i in range(13):
+# #for i in (0,1,2,5,7,8,10,11):
     
-    x_test = XDrivers[i]
-    y_test = YDrivers[i]
+#     x_test = XDrivers[i]
+#     y_test = YDrivers[i]
+    
+#     if i == 0:
+#         x_train = X_Drivers[1]
+#         y_train = Y_Drivers[1]
+#         for j in range(2,13):
+#         #for j in (2,5,7,8,10,11):
+#             x_train = np.concatenate((x_train, X_Drivers[j]),axis = 0)
+#             y_train = np.concatenate((y_train,Y_Drivers[j]), axis = 0)
+    
+#     if i != 0:
+#         x_train = X_Drivers[0]
+#         y_train = Y_Drivers[0]
+#         for j in range(1,13):
+#         #for j in (1,2,5,7,8,10,11):
+#             if j != i:
+#                 x_train = np.concatenate((x_train, X_Drivers[j]),axis = 0)
+#                 y_train = np.concatenate((y_train,Y_Drivers[j]), axis = 0)
+                
+    
+#     # Get LODO data
+#     #x_train, y_train, x_test, y_test = getLODOIterData(XDrivers, YDrivers, i)
+
+#     model = KNeighborsClassifier(11, weights = 'distance')  ### 11 for both 2 classes 20 and 3 classes
+#     #model = xgb
+    
+#     model.fit(x_train,y_train)
+#     validation(model, x_test, y_test,NumClasses)
+#     output_current_LODO()
+#     accuracy.clear()
+#     precision.clear()
+#     recall.clear()
+#     f_1.clear()  
+    
+# output_average_results()
+
+#### More accurate acc and f1 measurement for knn:
+
+numDriver = 13
+accuracy = 0
+precision = 0
+recall = 0
+f1 = 0
+#Fea_i = 0
+    
+for i in range(numDriver):
+
+    x_test = X_Drivers[i]
+    y_test = Y_Drivers[i]
     
     if i == 0:
         x_train = X_Drivers[1]
         y_train = Y_Drivers[1]
         for j in range(2,13):
-        #for j in (2,5,7,8,10,11):
             x_train = np.concatenate((x_train, X_Drivers[j]),axis = 0)
             y_train = np.concatenate((y_train,Y_Drivers[j]), axis = 0)
     
@@ -316,28 +367,39 @@ for i in range(13):
         x_train = X_Drivers[0]
         y_train = Y_Drivers[0]
         for j in range(1,13):
-        #for j in (1,2,5,7,8,10,11):
+        #for j in (1,3,5,7,8,10,11,12):
             if j != i:
                 x_train = np.concatenate((x_train, X_Drivers[j]),axis = 0)
                 y_train = np.concatenate((y_train,Y_Drivers[j]), axis = 0)
-                
-    
-    # Get LODO data
-    #x_train, y_train, x_test, y_test = getLODOIterData(XDrivers, YDrivers, i)
 
-    model = KNeighborsClassifier(5500, weights = 'distance')  ### 5500 for both 2 classes abd 3 classes
+        
+    model = KNeighborsClassifier(11,weights = 'distance')### 11 for both 2 classes 20 and 3 classes
     #model = xgb
     
     model.fit(x_train,y_train)
-    validation(model, x_test, y_test,NumClasses)
-    output_current_LODO()
-    accuracy.clear()
-    precision.clear()
-    recall.clear()
-    f_1.clear()  
+    #Fea_i += model.feature_importances_
+    y_pred = model.predict(x_test)
+      
+    accuracy += accuracy_score(y_test, y_pred)
+    precision += precision_score(y_test, y_pred, average='macro', zero_division=1) #zero_division???
+    recall += recall_score(y_test, y_pred, average='macro', zero_division=1) #zero_division???
+    f1 += f1_score(y_test, y_pred,average='macro', zero_division=1)
     
-output_average_results()
- 
+    print(i)
+    print(accuracy_score(y_test, y_pred))
+    print(f1_score(y_test, y_pred, average='macro'))
+        
+    figure, axis = plt.subplots(2, 1)
+
+    axis[0].hist(y_pred) 
+    axis[1].hist(y_test) 
+
+print("score = " + str(accuracy*1.0/numDriver))
+print("Average Validation Precision: " + str(np.mean(precision*1.0/numDriver)))
+print("Average Validation Recall: " + str(np.mean(recall*1.0/numDriver)))
+print("Average Validation f1: " + str(np.mean(f1*1.0/numDriver)))
+
+
     
 
 
